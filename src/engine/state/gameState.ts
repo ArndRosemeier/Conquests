@@ -58,11 +58,27 @@ export interface PendingMove {
 export type WarTable = Readonly<Record<string, readonly PowerId[]>>;
 
 /**
- * Per-power intelligence: areas whose garrison a power has scouted (via
- * espionage). Keyed by PowerId; the value lists the AreaIds that power has
- * revealed. A power always knows its own areas without appearing here.
+ * A single espionage snapshot: what a power learned about an area at the moment
+ * it spied. This is deliberately a frozen point-in-time observation, never a live
+ * mirror of the area - it goes stale as the game advances, and actions like
+ * bribing do NOT refresh it. Consumers must display/reason about its age.
  */
-export type IntelTable = Readonly<Record<string, readonly AreaId[]>>;
+export interface IntelReport {
+  readonly troops: number;
+  readonly fleets: number;
+  readonly owner: PowerId | null;
+  readonly fortified: boolean;
+  /** Game time when the snapshot was taken, for staleness. */
+  readonly observedYear: number;
+  readonly observedSeason: Season;
+}
+
+/**
+ * Per-power intelligence: the latest espionage snapshot each power holds for the
+ * areas it has scouted. Keyed [powerId][areaId]. A power always knows its own
+ * areas exactly (live), so those never appear here.
+ */
+export type IntelTable = Readonly<Record<string, Readonly<Record<string, IntelReport>>>>;
 
 /**
  * The complete, serializable game state. Pure data - no functions, no class

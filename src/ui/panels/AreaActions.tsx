@@ -5,9 +5,10 @@ import { availableAreaActions, canBuild } from "../../engine/state/legalActions.
 import type { AreaActionKind } from "../../engine/state/legalActions.ts";
 import { isFoundingTurn } from "../../engine/state/phases.ts";
 import { getAreaState, getPowerState } from "../../engine/state/helpers.ts";
+import { perceive } from "../../engine/state/knowledge.ts";
 import type { AreaId } from "../../engine/types.ts";
 import { getArea } from "../../engine/world/classic.ts";
-import { terrainLabel } from "../labels.ts";
+import { intelAgeLabel, terrainLabel } from "../labels.ts";
 import { useGame } from "../store.ts";
 
 function money(n: number): string {
@@ -100,8 +101,9 @@ function ActionPopup({
   const a = getAreaState(gameState, area);
   const def = getArea(world, area);
   const kinds = availableAreaActions(gameState, ruleSet, world, area, humanPower);
-  const known =
-    a.owner === humanPower || (gameState.intel[String(humanPower)] ?? []).includes(area);
+  const view = perceive(gameState, humanPower, area);
+  const treasury = getPowerState(gameState, humanPower).treasury;
+  const bribeCost = ruleSet.subversion.bribeCost;
 
   return (
     <PopupFrame x={x} y={y} onClose={closePopup}>
@@ -117,7 +119,11 @@ function ActionPopup({
           : a.owner === humanPower
             ? "Your territory"
             : ruleSet.powers.find((p) => p.id === a.owner)?.name}
-        {known ? ` \u00b7 ${Math.round(a.troops / 1000)}k` : " \u00b7 troops unknown"}
+        {view.kind === "own"
+          ? ` \u00b7 ${Math.round(view.troops / 1000)}k`
+          : view.kind === "report"
+            ? ` \u00b7 ~${Math.round(view.troops / 1000)}k (spied ${intelAgeLabel(view.ageSeasons)})`
+            : " \u00b7 troops unknown"}
       </div>
       <div className="popup-sub muted">
         {terrainLabel(ruleSet, def.terrain)}
@@ -145,11 +151,15 @@ function ActionPopup({
           <div key={kind}>
             <button
               className={`popup-btn ${open === kind ? "active" : ""}`}
+              disabled={kind === "SUBVERT" && bribeCost > treasury}
               onClick={() => {
                 if (kind === "MOVE_ARMY") return beginMove("army");
                 if (kind === "MOVE_FLEET") return beginMove("fleet");
                 if (kind === "SPY") return playAction({ type: "SPY", area });
                 if (kind === "FORTIFY") return playAction({ type: "FORTIFY", area });
+                // A bribe is a fixed payment applied immediately; keep the popup
+                // open so the player can keep bribing until the country flips.
+                if (kind === "SUBVERT") return playAction({ type: "SUBVERT", area }, true);
                 setOpen(open === kind ? null : kind);
               }}
             >
@@ -166,11 +176,19 @@ function ActionPopup({
               {kind === "FORTIFY" && (
                 <span className="popup-cost">{money(ruleSet.costs.fortification)}</span>
               )}
+              {kind === "SUBVERT" && <span className="popup-cost">{money(bribeCost)}</span>}
             </button>
             {open === kind && <AmountForm kind={kind} area={area} />}
           </div>
         ))}
       </div>
+
+      {kinds.includes("SUBVERT") && (
+        <p className="muted popup-empty">
+          Each bribe chips away at the garrison. Keep paying until it defects {"\u2014"} money
+          spent is gone even if you stop early.
+        </p>
+      )}
     </PopupFrame>
   );
 }
@@ -229,14 +247,12 @@ function AmountForm({
     );
   }
 
-  if (kind === "SUBVERT" || kind === "LOAN_MINOR" || kind === "LOAN_POWER") {
-    // Subversion is fine-grained (100k steps); loans move in larger increments.
-    const step = kind === "SUBVERT" ? 100_000 : 1_000_000;
+  if (kind === "LOAN_MINOR" || kind === "LOAN_POWER") {
+    const step = 1_000_000;
     const max = Math.max(step, Math.floor(treasury / step) * step);
     const value = Math.min(Math.max(amount, step), max);
     const onConfirm = (): void => {
-      if (kind === "SUBVERT") playAction({ type: "SUBVERT", area, amount: value });
-      else if (kind === "LOAN_MINOR") playAction({ type: "LOAN_MINOR", area, amount: value });
+      if (kind === "LOAN_MINOR") playAction({ type: "LOAN_MINOR", area, amount: value });
       else {
         const owner = getAreaState(gameState, area).owner;
         if (owner !== null) playAction({ type: "LOAN_POWER", target: owner, amount: value });

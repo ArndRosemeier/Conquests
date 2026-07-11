@@ -28,12 +28,28 @@ export interface NewGameOptions {
   readonly seed: number;
 }
 
+// Region income spans $500k..$2.5m in $100k steps, matching the original game.
+const INCOME_MIN = 500_000;
+const INCOME_STEP = 100_000;
+const INCOME_MAX_STEPS = 20; // (2_500_000 - 500_000) / 100_000
+/** Exponent skewing income toward the low end (>1, softer than quadratic's 2). */
+const INCOME_SKEW = 1.7;
+
 const INCOME_BY_VALUE: Readonly<Record<Rating, number>> = {
-  A: 8_000_000,
-  B: 5_000_000,
-  C: 3_000_000,
-  D: 1_000_000,
+  A: 2_500_000,
+  B: 1_600_000,
+  C: 1_000_000,
+  D: 500_000,
 };
+
+/**
+ * A random region income in $100k steps over [$500k, $2.5m], skewed toward the
+ * low end so that a $2m+ country is a lucky roll (per the original's feel).
+ */
+function rollIncome(rng: Rng): number {
+  const steps = Math.round(INCOME_MAX_STEPS * Math.pow(rng.next(), INCOME_SKEW));
+  return INCOME_MIN + steps * INCOME_STEP;
+}
 
 const HIST_VP_BY_VALUE: Readonly<Record<Rating, number>> = {
   A: 45,
@@ -124,9 +140,7 @@ export function createGame(options: NewGameOptions): GameState {
 
   // Every area starts as a neutral minor; powers overwrite their holdings below.
   for (const area of world.areas) {
-    const income = scenario.presetMinors
-      ? INCOME_BY_VALUE[area.value]
-      : rng.range(1, 8) * 1_000_000;
+    const income = scenario.presetMinors ? INCOME_BY_VALUE[area.value] : rollIncome(rng);
     const victoryValue = scenario.presetMinors
       ? HIST_VP_BY_VALUE[area.value]
       : rng.range(

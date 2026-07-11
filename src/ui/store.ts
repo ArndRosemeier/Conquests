@@ -55,7 +55,7 @@ interface StoreState {
   saveGame: (name: string) => Promise<void>;
   loadGame: (state: GameState) => void;
   newGame: () => void;
-  playAction: (action: Action) => void;
+  playAction: (action: Action, keepPopup?: boolean) => void;
   endTurn: () => void;
   handleMapClick: (id: AreaId, x: number, y: number) => void;
   beginMove: (mode: MoveMode) => void;
@@ -215,10 +215,12 @@ export const useGame = create<StoreState>((set, get) => {
     });
   },
 
-  playAction: (action) => {
+  playAction: (action, keepPopup) => {
     if (runner === null) return;
     runner.apply(action);
-    set({ ...CLEARED });
+    // Repeated bribes keep the popup open so the player can keep paying until
+    // the country flips; everything else dismisses the popup on success.
+    if (keepPopup !== true) set({ ...CLEARED });
   },
 
   endTurn: () => {

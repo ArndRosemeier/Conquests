@@ -109,7 +109,7 @@ export const CLASSIC_RULESET: RuleSet = {
     terrainDefensePerPoint: 0.25,
   },
   economy: {
-    regionBonusMax: 20_000_000,
+    regionBonusMax: 5_000_000,
     guaranteedPeaceLoan: 8_000_000,
     minPeaceLoan: 300_000,
   },
@@ -121,8 +121,10 @@ export const CLASSIC_RULESET: RuleSet = {
     standardAreaValueMax: 50,
   },
   subversion: {
+    bribeCost: 200_000,
     baseTroopsPerDollar: 0.05,
     worthResistance: 0.0000002,
+    bribeVariance: 0.6,
     coupGarrison: 1_000,
   },
 };

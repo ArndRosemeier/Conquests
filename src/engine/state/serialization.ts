@@ -6,7 +6,7 @@ import type { GameState } from "./gameState.ts";
  * class instances, no functions, RNG stored as a single number), so persistence
  * and future networking are a straight JSON round-trip.
  */
-export const SAVE_VERSION = 2 as const;
+export const SAVE_VERSION = 3 as const;
 
 interface SaveFile {
   readonly version: number;

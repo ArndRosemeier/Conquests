@@ -24,3 +24,16 @@ export function terrainLabel(ruleSet: RuleSet, terrain: number): string {
   const pct = Math.round(terrain * ruleSet.combat.terrainDefensePerPoint * 100);
   return `${name} (+${pct}% defense)`;
 }
+
+/** How old an espionage snapshot is, in human terms (0 seasons = "just now"). */
+export function intelAgeLabel(ageSeasons: number): string {
+  if (ageSeasons <= 0) return "just now";
+  if (ageSeasons === 1) return "1 season ago";
+  if (ageSeasons < 4) return `${ageSeasons} seasons ago`;
+  const years = Math.floor(ageSeasons / 4);
+  const rem = ageSeasons % 4;
+  const y = years === 1 ? "1 year" : `${years} years`;
+  if (rem === 0) return `${y} ago`;
+  const s = rem === 1 ? "1 season" : `${rem} seasons`;
+  return `${y}, ${s} ago`;
+}

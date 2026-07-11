@@ -6,7 +6,7 @@ import { getArea, neighborsOf } from "../world/classic.ts";
 import type { WorldDefinition } from "../world/types.ts";
 import type { Action } from "./actions.ts";
 import type { GameEvent } from "./events.ts";
-import type { AreaState, GameState, PendingMove, PowerState } from "./gameState.ts";
+import type { AreaState, GameState, IntelReport, PendingMove, PowerState } from "./gameState.ts";
 import {
   endWar,
   getAreaState,
@@ -199,12 +199,27 @@ function spy(
   };
 }
 
-/** Adds an area to a power's known-garrison set (deduplicated). */
+/**
+ * Stores a fresh espionage snapshot of an area for a power, overwriting any
+ * earlier (now stale) report. This is the only way foreign garrison knowledge is
+ * created; it is never implicitly refreshed by other actions.
+ */
 function recordIntel(state: GameState, power: PowerId, area: AreaId): GameState {
   const key = String(power);
-  const known = state.intel[key] ?? [];
-  if (known.includes(area)) return state;
-  return { ...state, intel: { ...state.intel, [key]: [...known, area] } };
+  const a = getAreaState(state, area);
+  const report: IntelReport = {
+    troops: a.troops,
+    fleets: a.fleets,
+    owner: a.owner,
+    fortified: a.fortified,
+    observedYear: state.year,
+    observedSeason: state.season,
+  };
+  const prev = state.intel[key] ?? {};
+  return {
+    ...state,
+    intel: { ...state.intel, [key]: { ...prev, [String(area)]: report } },
+  };
 }
 
 function subvert(
@@ -212,18 +227,25 @@ function subvert(
   ruleSet: RuleSet,
   power: PowerId,
   area: AreaId,
-  amount: number,
 ): ReduceResult {
   requireCan(canSubvert(state), "subvert");
   const a = getAreaState(state, area);
   if (a.owner !== null) {
     throw new IllegalActionError(`Area ${area} is not a neutral minor`);
   }
-  const p = spend(getPowerState(state, power), amount);
+  // One bribe is a fixed payment. It chips away at the garrison; the money is
+  // gone whether or not this bribe is the one that finally flips the country.
+  const bribe = ruleSet.subversion.bribeCost;
+  const p = spend(getPowerState(state, power), bribe);
   let next = withPower(state, p);
 
   const resistance = 1 + a.income * ruleSet.subversion.worthResistance;
-  const removed = Math.floor((amount * ruleSet.subversion.baseTroopsPerDollar) / resistance);
+  const base = (bribe * ruleSet.subversion.baseTroopsPerDollar) / resistance;
+  // Each bribe lands with a random swing, so the flip point is never certain.
+  const rng = new Rng(next.rngState);
+  const swing = 1 + (rng.next() * 2 - 1) * ruleSet.subversion.bribeVariance;
+  next = { ...next, rngState: rng.snapshot() };
+  const removed = Math.max(1, Math.floor(base * swing));
   const remaining = a.troops - removed;
   const events: GameEvent[] = [];
 
@@ -352,7 +374,7 @@ export function reduce(
     case "SPY":
       return spy(state, ruleSet, power, action.area);
     case "SUBVERT":
-      return subvert(state, ruleSet, power, action.area, action.amount);
+      return subvert(state, ruleSet, power, action.area);
     case "MOVE_ARMY":
       return {
         state: moveArmy(state, ruleSet, world, power, action.from, action.to, action.troops),

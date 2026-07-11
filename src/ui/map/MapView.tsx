@@ -3,8 +3,10 @@ import type React from "react";
 import { neighborsOf, portAreas } from "../../engine/world/classic.ts";
 import type { AreaId } from "../../engine/types.ts";
 import type { AreaState } from "../../engine/state/gameState.ts";
+import { perceive } from "../../engine/state/knowledge.ts";
+import type { Perception } from "../../engine/state/knowledge.ts";
 import type { Point } from "../../engine/world/types.ts";
-import { terrainLabel } from "../labels.ts";
+import { intelAgeLabel, terrainLabel } from "../labels.ts";
 import { useGame } from "../store.ts";
 import { usePanZoom } from "./usePanZoom.ts";
 
@@ -137,21 +139,26 @@ function shapePath(shape: readonly (readonly Point[])[]): string {
  */
 function AreaMarkers({
   st,
+  view,
   cx,
   cy,
   u,
-  reveal,
 }: {
   st: AreaState;
+  view: Perception;
   cx: number;
   cy: number;
   u: number;
-  reveal: boolean;
 }): React.JSX.Element {
   const hasHub = st.supplyCenterOf !== null && st.owner === st.supplyCenterOf;
   const hasFort = st.fortified;
-  const showTroops = reveal && st.troops > 0;
-  const showFleets = reveal && st.fleets > 0;
+  // Troop/fleet figures reflect what the human knows: exact for own areas, a
+  // stale espionage snapshot otherwise. Stale numbers are dimmed to signal that.
+  const stale = view.kind === "report";
+  const troops = view.kind === "unknown" ? 0 : view.troops;
+  const fleets = view.kind === "unknown" ? 0 : view.fleets;
+  const showTroops = view.kind !== "unknown" && troops > 0;
+  const showFleets = view.kind !== "unknown" && fleets > 0;
   const badgeR = 0.2 * u;
   // Badges flank the troop number horizontally and share its mid-latitude, so a
   // hub star never drifts north into a neighboring (stacked) country. When there
@@ -185,13 +192,14 @@ function AreaMarkers({
           y={cy + 0.17 * u}
           fontSize={0.48 * u}
           textAnchor="middle"
-          fill="#ffffff"
+          fill={stale ? "#c7ced6" : "#ffffff"}
+          fillOpacity={stale ? 0.85 : 1}
           stroke="#000"
           strokeWidth={0.03 * u}
           paintOrder="stroke"
-          style={{ pointerEvents: "none", fontWeight: 700 }}
+          style={{ pointerEvents: "none", fontWeight: 700, fontStyle: stale ? "italic" : "normal" }}
         >
-          {troopsK(st.troops)}
+          {stale ? `~${troopsK(troops)}` : troopsK(troops)}
         </text>
       )}
       {showFleets && (
@@ -201,12 +209,13 @@ function AreaMarkers({
           fontSize={0.36 * u}
           textAnchor="middle"
           fill="#bfe9ff"
+          fillOpacity={stale ? 0.8 : 1}
           stroke="#000"
           strokeWidth={0.025 * u}
           paintOrder="stroke"
           style={{ pointerEvents: "none" }}
         >
-          {`\u2693 ${st.fleets}`}
+          {`\u2693 ${fleets}`}
         </text>
       )}
     </>
@@ -280,16 +289,19 @@ export function MapView(): React.JSX.Element {
   /** Marker base unit, so glyphs stay proportional across differently scaled worlds. */
   const u = width / 150;
 
-  /** Areas whose garrison the human may read: its own plus any it has spied. */
-  const known = useMemo(() => {
-    const set = new Set<AreaId>();
-    if (gameState === null || humanPower === null) return set;
+  /**
+   * What the human perceives per area: exact for its own, a stale snapshot for
+   * spied areas, unknown otherwise. Never reads foreign live troop counts.
+   */
+  const perceptions = useMemo(() => {
+    const m = new Map<string, Perception>();
+    if (gameState === null || humanPower === null) return m;
     for (const st of Object.values(gameState.areas)) {
-      if (st.owner === humanPower) set.add(st.id);
+      m.set(String(st.id), perceive(gameState, humanPower, st.id));
     }
-    for (const id of gameState.intel[String(humanPower)] ?? []) set.add(id);
-    return set;
+    return m;
   }, [gameState, humanPower]);
+  const unknownView: Perception = { kind: "unknown" };
   const pan = usePanZoom(
     {
       x: bounds.minX,
@@ -467,10 +479,10 @@ export function MapView(): React.JSX.Element {
             <AreaMarkers
               key={`m-${off}-${String(area.id)}`}
               st={st}
+              view={perceptions.get(String(area.id)) ?? unknownView}
               cx={c.x}
               cy={c.y}
               u={u}
-              reveal={known.has(area.id)}
             />
           );
         })}
@@ -492,15 +504,35 @@ export function MapView(): React.JSX.Element {
                 : "Neutral"}
             </strong>
           </div>
-          {hovered !== null && known.has(hovered) ? (
-            <>
-              <div className="tt-row">Troops: {hoveredArea.troops.toLocaleString()}</div>
-              {hoveredArea.fleets > 0 && <div className="tt-row">Fleets: {hoveredArea.fleets}</div>}
-              <div className="tt-row">Income: ${(hoveredArea.income / 1_000_000).toFixed(1)}M</div>
-            </>
-          ) : (
-            <div className="tt-row tt-unknown">Troops: unknown — spy to reveal</div>
-          )}
+          {(() => {
+            const view = hovered !== null ? perceptions.get(String(hovered)) ?? unknownView : unknownView;
+            if (view.kind === "own") {
+              return (
+                <>
+                  <div className="tt-row">Troops: {hoveredArea.troops.toLocaleString()}</div>
+                  {hoveredArea.fleets > 0 && <div className="tt-row">Fleets: {hoveredArea.fleets}</div>}
+                  <div className="tt-row">Income: ${(hoveredArea.income / 1_000_000).toFixed(1)}M</div>
+                </>
+              );
+            }
+            if (view.kind === "report") {
+              return (
+                <>
+                  <div className="tt-row">
+                    Troops: ~{view.troops.toLocaleString()}{" "}
+                    <span className="tt-stale">(spied {intelAgeLabel(view.ageSeasons)})</span>
+                  </div>
+                  {view.fleets > 0 && (
+                    <div className="tt-row">
+                      Fleets: ~{view.fleets} <span className="tt-stale">(stale)</span>
+                    </div>
+                  )}
+                  <div className="tt-row">Income: ${(hoveredArea.income / 1_000_000).toFixed(1)}M</div>
+                </>
+              );
+            }
+            return <div className="tt-row tt-unknown">Troops: unknown — spy to reveal</div>;
+          })()}
           <div className="tt-row">VP value: {hoveredArea.victoryValue}</div>
           <div className="tt-row">Terrain: {terrainLabel(ruleSet, hoveredDef.terrain)}</div>
           {hoveredDef.isPort && <div className="tt-row">Port</div>}

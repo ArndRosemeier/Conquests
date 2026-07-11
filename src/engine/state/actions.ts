@@ -12,7 +12,7 @@ export type Action =
   | { readonly type: "LOAN_POWER"; readonly target: PowerId; readonly amount: number }
   | { readonly type: "LOAN_MINOR"; readonly area: AreaId; readonly amount: number }
   | { readonly type: "SPY"; readonly area: AreaId }
-  | { readonly type: "SUBVERT"; readonly area: AreaId; readonly amount: number }
+  | { readonly type: "SUBVERT"; readonly area: AreaId }
   | {
       readonly type: "MOVE_ARMY";
       readonly from: AreaId;

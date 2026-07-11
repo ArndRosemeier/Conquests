@@ -76,11 +76,23 @@ export interface VictoryRules {
 
 export interface SubversionRules {
   /**
+   * Cost of a single bribe. Subversion is a repeated fixed payment: each bribe
+   * whittles down the minor's garrison, and money already spent is not refunded
+   * if you stop before it flips.
+   */
+  readonly bribeCost: number;
+  /**
    * Troops removed from a minor per dollar spent (scaled by net worth).
-   * troopsRemoved = spend * baseTroopsPerDollar / (1 + netWorth * worthResistance).
+   * troopsRemoved = bribeCost * baseTroopsPerDollar / (1 + netWorth * worthResistance).
    */
   readonly baseTroopsPerDollar: number;
   readonly worthResistance: number;
+  /**
+   * Random swing on each bribe's effectiveness, as a fraction (0..1). At 0.5 an
+   * individual bribe removes anywhere from 50% to 150% of the base figure, so the
+   * exact bribe that finally flips a country is never certain.
+   */
+  readonly bribeVariance: number;
   /** A coup succeeds when remaining defenders reach zero. */
   readonly coupGarrison: number;
 }

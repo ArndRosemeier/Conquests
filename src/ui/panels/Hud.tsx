@@ -1,10 +1,12 @@
 import type React from "react";
 import { getPowerState } from "../../engine/state/helpers.ts";
+import { annualIncomeFor } from "../../engine/state/scoring.ts";
 import { useGame } from "../store.ts";
 
 export function Hud(): React.JSX.Element | null {
   const gameState = useGame((s) => s.gameState);
   const ruleSet = useGame((s) => s.ruleSet);
+  const world = useGame((s) => s.world);
   const humanPower = useGame((s) => s.humanPower);
   const endTurn = useGame((s) => s.endTurn);
   const newGame = useGame((s) => s.newGame);
@@ -17,6 +19,7 @@ export function Hud(): React.JSX.Element | null {
   const activeDef = active !== null ? ruleSet.powers.find((p) => p.id === active) : null;
   const human = getPowerState(gameState, humanPower);
   const humanDef = ruleSet.powers.find((p) => p.id === humanPower)!;
+  const annualIncome = annualIncomeFor(gameState, ruleSet, world, humanPower);
   const inCombat = gameState.stage === "COMBAT";
   const isHumanTurn = active === humanPower && !inCombat;
 
@@ -50,6 +53,9 @@ export function Hud(): React.JSX.Element | null {
           {humanDef.name}
         </span>
         <span className="hud-stat">Treasury ${(human.treasury / 1_000_000).toFixed(1)}M</span>
+        <span className="hud-stat" title="Income collected at the start of each year (areas + region bonuses)">
+          Income ${(annualIncome / 1_000_000).toFixed(1)}M/yr
+        </span>
         <span className="hud-stat">Score {Math.max(0, human.score)}</span>
         <button
           className="btn ghost"

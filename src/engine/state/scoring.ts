@@ -110,6 +110,41 @@ export function applyAnnualEconomy(
   return { state: next, events };
 }
 
+/**
+ * The income a power would collect at the next annual payout given the current
+ * board: every controlled area's income plus any fully-controlled region bonus
+ * (capped per the ruleset). Mirrors applyAnnualEconomy without mutating state.
+ */
+export function annualIncomeFor(
+  state: GameState,
+  ruleSet: RuleSet,
+  world: WorldDefinition,
+  power: PowerId,
+): number {
+  const areas = (areasByOwner(state).get(String(power)) ?? []);
+  let gain = areas.reduce((sum, a) => sum + a.income, 0);
+
+  const regionAreaIds = new Map<number, AreaId[]>();
+  for (const area of world.areas) {
+    const list = regionAreaIds.get(area.region) ?? [];
+    list.push(area.id);
+    regionAreaIds.set(area.region, list);
+  }
+
+  for (const ids of regionAreaIds.values()) {
+    const controlsAll =
+      ids.length > 0 && ids.every((id) => getAreaState(state, id).owner === power);
+    if (controlsAll) {
+      gain += Math.min(
+        ruleSet.economy.regionBonusMax,
+        ids.reduce((sum, id) => sum + getAreaState(state, id).income, 0),
+      );
+    }
+  }
+
+  return gain;
+}
+
 /** Highest-scoring power that meets the winning score, or null. */
 export function checkWinner(state: GameState): PowerId | null {
   if (!Number.isFinite(state.winningScore)) return null;
