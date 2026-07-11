@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vite
+.DS_Store
+*.tsbuildinfo
+
+# Local reference material (copyrighted original game assets)
+Colonial Conquest.pdf
+Screenshots/
