@@ -2,23 +2,14 @@ import type React from "react";
 import { getPowerState } from "../../engine/state/helpers.ts";
 import { useGame } from "../store.ts";
 
-const PHASE_LABEL: Record<string, string> = {
-  ARMY_BUILD: "Army Build",
-  FLEET_BUILD: "Fleet Build",
-  FORTIFY: "Fortification",
-  ECONOMIC_AID: "Economic Aid",
-  ESPIONAGE: "Espionage",
-  SUBVERSION: "Subversion",
-  ARMY_MOVE: "Army Movement",
-  FLEET_MOVE: "Fleet Movement",
-  COMBAT: "Combat",
-};
-
 export function Hud(): React.JSX.Element | null {
   const gameState = useGame((s) => s.gameState);
   const ruleSet = useGame((s) => s.ruleSet);
   const humanPower = useGame((s) => s.humanPower);
-  const endPhase = useGame((s) => s.endPhase);
+  const endTurn = useGame((s) => s.endTurn);
+  const newGame = useGame((s) => s.newGame);
+  const setInfoOpen = useGame((s) => s.setInfoOpen);
+  const setSaveLoadOpen = useGame((s) => s.setSaveLoadOpen);
 
   if (gameState === null || humanPower === null) return null;
 
@@ -26,8 +17,8 @@ export function Hud(): React.JSX.Element | null {
   const activeDef = active !== null ? ruleSet.powers.find((p) => p.id === active) : null;
   const human = getPowerState(gameState, humanPower);
   const humanDef = ruleSet.powers.find((p) => p.id === humanPower)!;
-  const isHumanTurn = active === humanPower && gameState.phase !== "COMBAT";
-  const isMove = gameState.phase === "ARMY_MOVE" || gameState.phase === "FLEET_MOVE";
+  const inCombat = gameState.stage === "COMBAT";
+  const isHumanTurn = active === humanPower && !inCombat;
 
   return (
     <header className="hud">
@@ -41,12 +32,16 @@ export function Hud(): React.JSX.Element | null {
       <div className="hud-center">
         <span className="hud-turn" style={{ borderColor: activeDef?.color }}>
           <span className="dot" style={{ background: activeDef?.color }} />
-          {gameState.phase === "COMBAT"
+          {inCombat
             ? "Resolving Combat"
-            : `${activeDef?.name ?? ""} - ${PHASE_LABEL[gameState.phase] ?? gameState.phase}`}
+            : isHumanTurn
+              ? "Your turn"
+              : `${activeDef?.name ?? ""} is acting...`}
         </span>
-        {isMove && isHumanTurn && (
-          <span className="hud-moves">Moves left: {gameState.movesRemaining}</span>
+        {isHumanTurn && (
+          <span className="hud-moves">
+            Moves: {gameState.armyMovesRemaining} army / {gameState.fleetMovesRemaining} fleet
+          </span>
         )}
       </div>
 
@@ -56,10 +51,26 @@ export function Hud(): React.JSX.Element | null {
         </span>
         <span className="hud-stat">Treasury ${(human.treasury / 1_000_000).toFixed(1)}M</span>
         <span className="hud-stat">Score {Math.max(0, human.score)}</span>
-        <button className="btn primary" disabled={!isHumanTurn} onClick={endPhase}>
-          {gameState.phase === "SUBVERSION" || gameState.phase === "FLEET_MOVE"
-            ? "End Turn"
-            : "Next Phase"}
+        <button
+          className="btn ghost"
+          title="How combat works"
+          onClick={() => setInfoOpen(true)}
+        >
+          Combat Info
+        </button>
+        <button className="btn ghost" title="Save or load a game" onClick={() => setSaveLoadOpen(true)}>
+          Save / Load
+        </button>
+        <button
+          className="btn ghost"
+          onClick={() => {
+            if (window.confirm("Abandon this game and start a new one?")) newGame();
+          }}
+        >
+          New Game
+        </button>
+        <button className="btn primary" disabled={!isHumanTurn} onClick={endTurn}>
+          End Turn
         </button>
       </div>
     </header>

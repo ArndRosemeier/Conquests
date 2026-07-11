@@ -14,36 +14,14 @@ export const areaId = (n: number): AreaId => n as AreaId;
 export const regionId = (n: number): RegionId => n as RegionId;
 export const powerId = (s: string): PowerId => s as PowerId;
 
-/** Build sub-phases. Occur once per year, in spring. */
-export type BuildPhaseId =
-  | "ARMY_BUILD"
-  | "FLEET_BUILD"
-  | "FORTIFY"
-  | "ECONOMIC_AID"
-  | "ESPIONAGE"
-  | "SUBVERSION";
+/**
+ * A turn is either a power acting freely (PLAYER) or the global combat
+ * resolution (COMBAT). There are no more per-action sub-phases: within a PLAYER
+ * turn a power may take any currently-allowed action in any order.
+ */
+export type TurnStage = "PLAYER" | "COMBAT";
 
-/** Movement sub-phases. Occur every turn. */
-export type MovePhaseId = "ARMY_MOVE" | "FLEET_MOVE";
-
-/** Every phase a single power can act in. */
-export type PlayerPhaseId = BuildPhaseId | MovePhaseId;
-
-/** All phases, including the global combat resolution. */
-export type PhaseId = PlayerPhaseId | "COMBAT";
-
-export const BUILD_PHASES: readonly BuildPhaseId[] = [
-  "ARMY_BUILD",
-  "FLEET_BUILD",
-  "FORTIFY",
-  "ECONOMIC_AID",
-  "ESPIONAGE",
-  "SUBVERSION",
-];
-
-export const MOVE_PHASES: readonly MovePhaseId[] = ["ARMY_MOVE", "FLEET_MOVE"];
-
-/** The four seasons; build phases only happen in SPRING. */
+/** The four seasons; building and diplomacy only happen in SPRING. */
 export type Season = "SPRING" | "SUMMER" | "FALL" | "WINTER";
 
 export const SEASONS: readonly Season[] = ["SPRING", "SUMMER", "FALL", "WINTER"];

@@ -1,25 +1,18 @@
 import type { RuleSet } from "../ruleset/types.ts";
 import { EngineError } from "../types.ts";
-import type { PhaseId, PowerId, Season } from "../types.ts";
+import type { PowerId, Season } from "../types.ts";
 import type { GameState } from "./gameState.ts";
 import { getPowerState } from "./helpers.ts";
 
-/** Phases the currently-acting power runs this turn. */
-export function playerPhases(state: GameState, ruleSet: RuleSet): readonly PhaseId[] {
-  if (state.season === "SPRING") {
-    // First turn of the whole game: only Espionage + Subversion (manual 6.1.3).
-    if (state.year === 1) {
-      return ["ESPIONAGE", "SUBVERSION", "ARMY_MOVE", "FLEET_MOVE"];
-    }
-    return ruleSet.springPhases;
-  }
-  return ruleSet.regularPhases;
-}
+/**
+ * Turn structure. A year is four seasons; building and diplomacy happen only in
+ * spring, movement every season. Within a power's turn there are no sub-phases:
+ * it may take any allowed action in any order and then end its turn.
+ */
 
-export function initialMovesFor(ruleSet: RuleSet, phase: PhaseId): number {
-  if (phase === "ARMY_MOVE") return ruleSet.limits.armyMoves;
-  if (phase === "FLEET_MOVE") return ruleSet.limits.fleetMoves;
-  return 0;
+/** The founding turn (year 1 spring) forbids building/diplomacy (manual 6.1.3). */
+export function isFoundingTurn(state: GameState): boolean {
+  return state.year === 1 && state.season === "SPRING";
 }
 
 /** Whether a power actually takes a turn (humans and AIs do; neutrals do not). */
@@ -61,55 +54,47 @@ export function nextSeason(season: Season): { season: Season; yearAdvance: boole
   return { season: next, yearAdvance: next === "SPRING" };
 }
 
-/**
- * Advance to the next player phase. If the acting power has finished all phases,
- * hand off to the next acting power. If every power is done, enter COMBAT.
- */
-export function endPhaseFor(state: GameState, ruleSet: RuleSet): GameState {
-  if (state.activePower === null) {
-    throw new EngineError("Cannot end a player phase during COMBAT");
-  }
-  const phases = playerPhases(state, ruleSet);
-  const nextIndex = state.phaseIndex + 1;
-
-  if (nextIndex < phases.length) {
-    const phase = phases[nextIndex]!;
-    return {
-      ...state,
-      phaseIndex: nextIndex,
-      phase,
-      movesRemaining: initialMovesFor(ruleSet, phase),
-      tick: state.tick + 1,
-    };
-  }
-
-  const next = nextActingPower(state, ruleSet, state.activePower);
-  if (next !== null) {
-    const phase = phases[0]!;
-    return {
-      ...state,
-      activePower: next,
-      phaseIndex: 0,
-      phase,
-      movesRemaining: initialMovesFor(ruleSet, phase),
-      tick: state.tick + 1,
-    };
-  }
-
-  // Everyone has acted; time to resolve combat.
+/** Hand the turn to `power`: make it active and refill its movement budget. */
+export function beginTurnFor(
+  state: GameState,
+  ruleSet: RuleSet,
+  power: PowerId,
+): GameState {
   return {
     ...state,
-    activePower: null,
-    phase: "COMBAT",
-    phaseIndex: 0,
-    movesRemaining: 0,
+    stage: "PLAYER",
+    activePower: power,
+    armyMovesRemaining: ruleSet.limits.armyMoves,
+    fleetMovesRemaining: ruleSet.limits.fleetMoves,
     tick: state.tick + 1,
   };
 }
 
 /**
- * Begin the next turn after combat: advance the season (and year), set the first
- * acting power, and reset to that power's first phase.
+ * End the active power's turn: hand off to the next acting power, or enter COMBAT
+ * once everyone has acted.
+ */
+export function endTurnFor(state: GameState, ruleSet: RuleSet): GameState {
+  if (state.activePower === null) {
+    throw new EngineError("Cannot end a turn during COMBAT");
+  }
+  const next = nextActingPower(state, ruleSet, state.activePower);
+  if (next !== null) {
+    return beginTurnFor(state, ruleSet, next);
+  }
+  return {
+    ...state,
+    stage: "COMBAT",
+    activePower: null,
+    armyMovesRemaining: 0,
+    fleetMovesRemaining: 0,
+    tick: state.tick + 1,
+  };
+}
+
+/**
+ * Begin the next turn after combat: advance the season (and year), clear pending
+ * movement, and hand the turn to the first acting power.
  */
 export function beginNextTurn(state: GameState, ruleSet: RuleSet): GameState {
   const { season, yearAdvance } = nextSeason(state.season);
@@ -120,15 +105,5 @@ export function beginNextTurn(state: GameState, ruleSet: RuleSet): GameState {
   if (first === null) {
     throw new EngineError("No acting powers remain to begin a turn");
   }
-  const phases = playerPhases(staged, ruleSet);
-  const phase = phases[0]!;
-
-  return {
-    ...staged,
-    activePower: first,
-    phaseIndex: 0,
-    phase,
-    movesRemaining: initialMovesFor(ruleSet, phase),
-    tick: staged.tick + 1,
-  };
+  return beginTurnFor(staged, ruleSet, first);
 }

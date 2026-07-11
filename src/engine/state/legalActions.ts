@@ -3,7 +3,8 @@ import type { AreaId, PowerId } from "../types.ts";
 import { getArea, neighborsOf, portAreas } from "../world/classic.ts";
 import type { WorldDefinition } from "../world/types.ts";
 import type { AreaState, GameState } from "./gameState.ts";
-import { allAreas } from "./helpers.ts";
+import { getAreaState, allAreas } from "./helpers.ts";
+import { isFoundingTurn } from "./phases.ts";
 
 /** Areas the power owns. */
 export function ownedAreas(state: GameState, power: PowerId): readonly AreaState[] {
@@ -69,18 +70,86 @@ export function fleetMoveDestinations(world: WorldDefinition): readonly AreaId[]
   return portAreas(world).map((a) => a.id);
 }
 
-/** Which phases allow which top-level action types, for UI affordances. */
-export function isBuildPhase(state: GameState): boolean {
-  return (
-    state.phase === "ARMY_BUILD" ||
-    state.phase === "FLEET_BUILD" ||
-    state.phase === "FORTIFY" ||
-    state.phase === "ECONOMIC_AID" ||
-    state.phase === "ESPIONAGE" ||
-    state.phase === "SUBVERSION"
-  );
+// --- Season gates -----------------------------------------------------------
+//
+// These replace the old per-phase gating. Building and diplomacy are spring-only
+// and not allowed on the founding turn; espionage and subversion are spring-only
+// (allowed on the founding turn); movement is allowed every season. They power
+// both the reducer's legality checks and the UI's action affordances.
+
+/** Building armies/fleets and fortifying (spring, but not the founding turn). */
+export function canBuild(state: GameState): boolean {
+  return state.season === "SPRING" && !isFoundingTurn(state);
 }
 
-export function isMovePhase(state: GameState): boolean {
-  return state.phase === "ARMY_MOVE" || state.phase === "FLEET_MOVE";
+/** Economic aid to powers or minors (spring, but not the founding turn). */
+export function canDiplomacy(state: GameState): boolean {
+  return state.season === "SPRING" && !isFoundingTurn(state);
+}
+
+/** Espionage (spring, including the founding turn). */
+export function canEspionage(state: GameState): boolean {
+  return state.season === "SPRING";
+}
+
+/** Subversion of neutral minors (spring, including the founding turn). */
+export function canSubvert(state: GameState): boolean {
+  return state.season === "SPRING";
+}
+
+/** An area-scoped action the UI can offer for a clicked area. */
+export type AreaActionKind =
+  | "BUILD_ARMY"
+  | "BUILD_FLEET"
+  | "FORTIFY"
+  | "MOVE_ARMY"
+  | "MOVE_FLEET"
+  | "SPY"
+  | "SUBVERT"
+  | "LOAN_MINOR"
+  | "LOAN_POWER";
+
+/**
+ * The actions the acting `power` may take against a specific `area` right now,
+ * used to build the map's click popup. Movement targets are chosen separately
+ * (source area first, then destination), so only the source-side move actions
+ * appear here.
+ */
+export function availableAreaActions(
+  state: GameState,
+  ruleSet: RuleSet,
+  world: WorldDefinition,
+  area: AreaId,
+  power: PowerId,
+): readonly AreaActionKind[] {
+  const a = getAreaState(state, area);
+  const def = getArea(world, area);
+  const kinds: AreaActionKind[] = [];
+
+  if (a.owner === power) {
+    if (canBuild(state) && a.supplyCenterOf === power) {
+      kinds.push("BUILD_ARMY");
+      if (def.isPort) kinds.push("BUILD_FLEET");
+    }
+    if (canBuild(state) && !a.fortified) kinds.push("FORTIFY");
+    if (a.troops > ruleSet.limits.minGarrison && state.armyMovesRemaining > 0) {
+      kinds.push("MOVE_ARMY");
+    }
+    if (def.isPort && a.fleets > 0 && state.fleetMovesRemaining > 0) {
+      kinds.push("MOVE_FLEET");
+    }
+    return kinds;
+  }
+
+  if (a.owner === null) {
+    if (canEspionage(state)) kinds.push("SPY");
+    if (canSubvert(state)) kinds.push("SUBVERT");
+    if (canDiplomacy(state)) kinds.push("LOAN_MINOR");
+    return kinds;
+  }
+
+  // Foreign power-owned area.
+  if (canEspionage(state)) kinds.push("SPY");
+  if (canDiplomacy(state)) kinds.push("LOAN_POWER");
+  return kinds;
 }

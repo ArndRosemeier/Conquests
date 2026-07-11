@@ -1,4 +1,4 @@
-import type { AreaId, ControlKind, PhaseId, PowerId, Season } from "../types.ts";
+import type { AreaId, ControlKind, PowerId, Season, TurnStage } from "../types.ts";
 
 /** Dynamic state of a single map area. */
 export interface AreaState {
@@ -58,6 +58,13 @@ export interface PendingMove {
 export type WarTable = Readonly<Record<string, readonly PowerId[]>>;
 
 /**
+ * Per-power intelligence: areas whose garrison a power has scouted (via
+ * espionage). Keyed by PowerId; the value lists the AreaIds that power has
+ * revealed. A power always knows its own areas without appearing here.
+ */
+export type IntelTable = Readonly<Record<string, readonly AreaId[]>>;
+
+/**
  * The complete, serializable game state. Pure data - no functions, no class
  * instances - so it can be saved, replayed, diffed, or sent over a network.
  */
@@ -67,17 +74,19 @@ export interface GameState {
   readonly scenarioId: string;
   readonly year: number;
   readonly season: Season;
-  /** Index into the current turn's phase list. */
-  readonly phaseIndex: number;
-  readonly phase: PhaseId;
-  /** Which power is currently acting (undefined during COMBAT). */
+  /** Whether a power is acting freely (PLAYER) or combat is resolving (COMBAT). */
+  readonly stage: TurnStage;
+  /** Which power is currently acting (null during COMBAT). */
   readonly activePower: PowerId | null;
-  /** Remaining moves in the active movement phase. */
-  readonly movesRemaining: number;
+  /** Moves the acting power has left this turn (reset at the start of its turn). */
+  readonly armyMovesRemaining: number;
+  readonly fleetMovesRemaining: number;
   readonly powers: Readonly<Record<string, PowerState>>;
   readonly areas: Readonly<Record<string, AreaState>>;
   readonly pending: readonly PendingMove[];
   readonly war: WarTable;
+  /** What each power has learned about foreign garrisons through spying. */
+  readonly intel: IntelTable;
   readonly rngState: number;
   readonly winningScore: number;
   readonly winner: PowerId | null;

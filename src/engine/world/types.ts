@@ -56,6 +56,12 @@ export interface WorldDefinition {
     readonly maxX: number;
     readonly maxY: number;
   };
+  /**
+   * Horizontal period (in world units) for a map that wraps east-west like a
+   * globe. When set, panning off one side scrolls seamlessly onto the other.
+   * Omit for flat maps that do not wrap.
+   */
+  readonly wrapX?: number;
 }
 
 /** Home areas and supply centers per major power, used by scenarios. */

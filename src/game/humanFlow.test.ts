@@ -13,7 +13,7 @@ import { GameRunner } from "./gameRunner.ts";
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe("human handoff", () => {
-  it("advances turns as the human ends each phase, without deadlock", async () => {
+  it("advances turns as the human ends each turn, without deadlock", async () => {
     const human = new HumanController();
     const controls = new Map<PowerId, PowerControlConfig>();
     const controllers = new Map<PowerId, PlayerController>();
@@ -42,10 +42,10 @@ describe("human handoff", () => {
     });
     void runner.run();
 
-    // The human simply ends every phase; the runner should keep advancing.
+    // The human simply ends every turn; the runner should keep advancing.
     for (let i = 0; i < 200; i += 1) {
       await tick();
-      if (human.isWaiting) human.finishPhase();
+      if (human.isWaiting) human.finishTurn();
       if (runner.state.year >= 3) break;
     }
 

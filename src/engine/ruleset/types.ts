@@ -1,4 +1,4 @@
-import type { PhaseId, PowerId } from "../types.ts";
+import type { PowerId } from "../types.ts";
 
 /**
  * Definition of one major power. All per-power balance numbers live here so a
@@ -100,8 +100,4 @@ export interface RuleSet {
   readonly economy: EconomyRules;
   readonly victory: VictoryRules;
   readonly subversion: SubversionRules;
-  /** Player-facing phases within a spring turn (build + move). */
-  readonly springPhases: readonly PhaseId[];
-  /** Player-facing phases within a non-spring turn (move only). */
-  readonly regularPhases: readonly PhaseId[];
 }

@@ -21,11 +21,33 @@ export interface PanZoom {
 /**
  * Minimal SVG pan/zoom via the viewBox. No dependency needed - a turn-based
  * vector map does not require a game-engine camera.
+ *
+ * When `wrap` is provided the x axis is periodic (globe-like): the viewBox x is
+ * normalized into a single period so the caller can render a few repeated copies
+ * of the world and let panning cross the seam seamlessly.
  */
 /** Deepest zoom-in relative to the full map (max magnification). */
 const MAX_ZOOM = 40;
 
-export function usePanZoom(initial: ViewBox): PanZoom {
+export interface WrapConfig {
+  /** Horizontal period in world units (e.g. 360 for degrees of longitude). */
+  readonly period: number;
+  /** Center of the normalization window (typically the world center x). */
+  readonly center: number;
+}
+
+export function usePanZoom(initial: ViewBox, wrap?: WrapConfig): PanZoom {
+  const normX = useCallback(
+    (x: number): number => {
+      if (wrap === undefined) return x;
+      const { period, center } = wrap;
+      const d = x - center;
+      const m = ((d + period / 2) % period + period) % period - period / 2;
+      return center + m;
+    },
+    [wrap],
+  );
+
   const [vb, setVb] = useState<ViewBox>(initial);
   const [isPanning, setIsPanning] = useState(false);
   const dragStart = useRef<{ x: number; y: number; vb: ViewBox } | null>(null);
@@ -44,9 +66,9 @@ export function usePanZoom(initial: ViewBox): PanZoom {
       const h = Math.min(Math.max(cur.h * factor, full.h / MAX_ZOOM), full.h);
       const x = cur.x + (cur.w - w) * px;
       const y = cur.y + (cur.h - h) * py;
-      return { x, y, w, h };
+      return { x: normX(x), y, w, h };
     });
-  }, []);
+  }, [normX]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0) return;
@@ -62,8 +84,8 @@ export function usePanZoom(initial: ViewBox): PanZoom {
     if (!isPanning && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) {
       setIsPanning(true);
     }
-    setVb({ x: start.vb.x - dx, y: start.vb.y - dy, w: start.vb.w, h: start.vb.h });
-  }, [isPanning]);
+    setVb({ x: normX(start.vb.x - dx), y: start.vb.y - dy, w: start.vb.w, h: start.vb.h });
+  }, [isPanning, normX]);
 
   const onPointerUp = useCallback(() => {
     dragStart.current = null;

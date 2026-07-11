@@ -4,7 +4,7 @@ import type { DecisionContext, PlayerController } from "./types.ts";
 /**
  * The human player. Actions are applied live through the store as the user
  * interacts with the UI, so requestActions simply resolves (with an empty batch)
- * once the user ends the phase. This keeps humans and AIs on the same runner
+ * once the user ends their turn. This keeps humans and AIs on the same runner
  * loop while giving the UI immediate map feedback.
  */
 export class HumanController implements PlayerController {
@@ -18,8 +18,8 @@ export class HumanController implements PlayerController {
     });
   }
 
-  /** Called by the UI when the user finishes the current phase. */
-  public finishPhase(): void {
+  /** Called by the UI when the user finishes their turn. */
+  public finishTurn(): void {
     const resolve = this.resolver;
     this.resolver = null;
     resolve?.([]);

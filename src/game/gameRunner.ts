@@ -29,6 +29,7 @@ const sleep = (ms: number): Promise<void> =>
 export class GameRunner {
   private current: GameState;
   private running = false;
+  private stopped = false;
 
   public constructor(
     private readonly ruleSet: RuleSet,
@@ -45,8 +46,17 @@ export class GameRunner {
   }
 
   private set(state: GameState, events: readonly GameEvent[] = []): void {
+    if (this.stopped) return;
     this.current = state;
     this.hooks.onUpdate(state, events);
+  }
+
+  /**
+   * Permanently stop this runner. Any in-flight loop (AI turns, combat) becomes
+   * a no-op so an abandoned game can never write over a freshly started one.
+   */
+  public stop(): void {
+    this.stopped = true;
   }
 
   /** Apply a single action (used for live human input and internally). */
@@ -68,10 +78,11 @@ export class GameRunner {
 
   private async loop(): Promise<void> {
     for (;;) {
+      if (this.stopped) return;
       const s = this.current;
       if (s.winner !== null) return;
 
-      if (s.phase === "COMBAT") {
+      if (s.stage === "COMBAT") {
         await this.resolveCombat();
         continue;
       }
@@ -87,7 +98,6 @@ export class GameRunner {
 
       const actions = await controller.requestActions({
         view: { power, state: this.current, ruleSet: this.ruleSet, world: this.world },
-        phase: s.phase,
       });
 
       for (const action of actions) {
@@ -97,8 +107,8 @@ export class GameRunner {
         }
       }
 
-      // Human actions were already applied live; end the phase either way.
-      this.apply({ type: "END_PHASE" });
+      // Human actions were already applied live; end the turn either way.
+      this.apply({ type: "END_TURN" });
     }
   }
 

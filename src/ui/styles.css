@@ -214,13 +214,8 @@ input[type="range"] {
 .game-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 300px 1fr 280px;
+  grid-template-columns: 1fr 280px;
   min-height: 0;
-}
-.left-col {
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  background: var(--panel);
 }
 
 /* ---------- Map ---------- */
@@ -370,4 +365,305 @@ input[type="range"] {
   color: var(--muted);
   border-left: 2px solid var(--border);
   padding-left: 8px;
+}
+
+/* ---------- Area action popup ---------- */
+@keyframes area-capture {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.area-flash {
+  animation: area-capture 1000ms ease-out forwards;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+/* --- Combat info modal ---------------------------------------------------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(4, 9, 15, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.modal {
+  width: min(820px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+}
+.modal-body section {
+  margin-bottom: 20px;
+}
+.modal-body h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.info-list {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+.info-list li {
+  margin-bottom: 6px;
+}
+.modal-body code {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12.5px;
+}
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.info-table th,
+.info-table td {
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: center;
+}
+.info-table th:first-child,
+.info-table td:first-child {
+  text-align: left;
+}
+.info-table thead th {
+  background: var(--panel-2);
+}
+.small {
+  font-size: 12px;
+}
+.sim-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+.sim-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.sim-grid label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.sim-grid select,
+.sim-grid input[type="range"] {
+  width: 100%;
+}
+.sim-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+.sim-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+}
+.sim-stat .sim-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sim-stat .sim-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+.sim-stat.big .sim-value {
+  font-size: 26px;
+  color: var(--accent);
+}
+
+.save-modal {
+  width: min(560px, 100%);
+}
+.save-row {
+  display: flex;
+  gap: 8px;
+}
+.save-row input {
+  flex: 1;
+}
+.save-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.save-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.save-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.save-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.save-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.area-popup {
+  position: fixed;
+  z-index: 41;
+  width: 240px;
+  background: rgba(16, 26, 38, 0.98);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  padding: 10px;
+}
+.popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.popup-name {
+  font-weight: 700;
+}
+.popup-x {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.popup-x:hover {
+  color: var(--ink);
+}
+.popup-sub {
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.popup-empty {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+.popup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.popup-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+.popup-btn:hover {
+  background: #24384e;
+  border-color: #38536f;
+}
+.popup-btn.active {
+  border-color: var(--accent);
+}
+.popup-cost {
+  color: var(--muted);
+  font-size: 12px;
+}
+.popup-form {
+  padding: 8px 4px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.popup-form label {
+  font-size: 12px;
+  color: var(--muted);
+  display: block;
+}
+.popup-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ---------- Victory ---------- */
+.victory-banner {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 12, 20, 0.7);
+  z-index: 60;
+}
+.victory-card {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  padding: 28px 40px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.victory-card h2 {
+  margin: 0 0 8px;
 }

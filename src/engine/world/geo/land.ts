@@ -1,6 +1,6 @@
 import type { MultiPolygon, Ring } from "polygon-clipping";
 import { feature } from "topojson-client";
-import land110m from "world-atlas/land-110m.json";
+import land50m from "world-atlas/land-50m.json";
 
 import { projectEquirectangular } from "./geometry.ts";
 
@@ -64,7 +64,7 @@ function latitudeBounds(coords: readonly (readonly number[])[]): {
 }
 
 function buildLandMask(): MultiPolygon {
-  const geo = feature(land110m, land110m.objects.land!);
+  const geo = feature(land50m, land50m.objects.land!);
   const features = geo.type === "FeatureCollection" ? geo.features : [geo];
   const polygons: number[][][][] = [];
   for (const f of features) {

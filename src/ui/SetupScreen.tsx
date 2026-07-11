@@ -7,6 +7,7 @@ import { useGame } from "./store.ts";
 
 export function SetupScreen(): React.JSX.Element {
   const startGame = useGame((s) => s.startGame);
+  const setSaveLoadOpen = useGame((s) => s.setSaveLoadOpen);
   const [scenarioId, setScenarioId] = useState(SCENARIOS[0]!.id);
   const [humanPower, setHumanPower] = useState<PowerId>(CLASSIC_RULESET.playOrder[0]!);
   const [aiLevel, setAiLevel] = useState(4);
@@ -71,6 +72,9 @@ export function SetupScreen(): React.JSX.Element {
           onClick={() => startGame({ scenarioId, humanPower, aiLevel, winningScore, seed })}
         >
           Begin Conquest
+        </button>
+        <button className="btn large" onClick={() => setSaveLoadOpen(true)}>
+          Load Game
         </button>
       </div>
     </div>

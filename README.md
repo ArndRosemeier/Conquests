@@ -15,6 +15,7 @@ Other scripts:
 npm run build      # type-check + production build
 npm run test       # run the engine/game test suite (Vitest)
 npm run typecheck  # strict type-check only
+npm run gen:world  # regenerate the precomputed real-world map asset
 ```
 
 ## How to play
@@ -30,7 +31,7 @@ The design keeps the rules engine pure and everything else pluggable, so players
 
 - `src/engine/` — pure, framework-free rules engine (no React). Runs headless (used by tests and AI).
   - `ruleset/` — all balance constants in one `RuleSet` object (`classic.ts`). Swap it to retune or add powers.
-  - `world/` — `WorldDefinition` (areas, regions, adjacency, geometry); `scenarios.ts` for starting positions. It is produced by a generic site-based Voronoi pipeline (`world/geo/worldBuilder.ts`): give it seed points + a land mask and it derives territory shapes, land adjacency, and ports. `world/realWorld.ts` is the first caller (real lon/lat + a real coastline); a procedural generator can be the next caller through the same pipeline.
+  - `world/` — `WorldDefinition` (areas, regions, adjacency, geometry); `scenarios.ts` for starting positions. It is produced by a generic seed-based mesh pipeline (`world/geo/worldBuilder.ts`): give it labeled seed points + a land mask and it scatters a fine Voronoi "atom" mesh, assigns each atom to its nearest country seed, and unions each country's atoms (then clips to the coast) to derive territory shapes, land adjacency (atoms of different countries that share a mesh edge), and ports (land atoms touching ocean). Because a country is a union of many small cells, borders are naturally organic and non-convex, elongated countries hold together (via a few extra seeds), and offshore islands never annex a far shore. `world/earthSource.ts` is the first caller (real lon/lat + a real 50m coastline). Because building it is slow (~15s), the real world is precomputed offline by `scripts/generateEarth.ts` (`npm run gen:world`) into `world/data/earth.generated.json`, which `world/realWorld.ts` loads instantly; the same pipeline can build procedural worlds at runtime.
   - `state/` — serializable `GameState`, discriminated-union `Action`s, seeded RNG, reducer, phase state machine, combat, scoring, save/load.
 - `src/controllers/` — `PlayerController` interface with interchangeable `HumanController` and `AIController`. A power's controller can be swapped at runtime (human ⇄ AI).
 - `src/game/gameRunner.ts` — orchestrates phases and play order, asks controllers for actions, applies them through the reducer, and resolves combat.
@@ -40,4 +41,4 @@ Key properties: deterministic (seeded RNG → testable, replayable, save/load-re
 
 ## Notes on fidelity
 
-Rules, unit factors, costs, phases, and the area table follow the original manual. Some values that were unavailable (the historical Scenario Data Card, exact combat formulas) are reasonable, clearly data-driven approximations that can be tuned in `ruleset/classic.ts` and `world/scenarios.ts`. The map is generated from real Earth geography: each of the 131 areas has a real longitude/latitude, territory shapes are Voronoi cells clipped to a real coastline (Natural Earth via `world-atlas`), and ports/adjacency are derived from that geometry. Because the same builder is fed by plain data, a procedurally generated world (synthetic points + synthetic landmass) drops in without touching the engine or UI.
+Rules, unit factors, costs, phases, and the area table follow the original manual. Some values that were unavailable (the historical Scenario Data Card, exact combat formulas) are reasonable, clearly data-driven approximations that can be tuned in `ruleset/classic.ts` and `world/scenarios.ts`. The map is generated from real Earth geography: each of the 131 areas has a real longitude/latitude, and territory shapes come from a fine Voronoi "atom" mesh whose cells are assigned to the nearest country seed and unioned per country, then clipped to a real 50m coastline (Natural Earth via `world-atlas`); ports/adjacency are derived from that geometry. Because each country is a union of many small cells, inland borders are naturally organic and non-convex (no artificial roughening needed) while real coastlines stay crisp, and a handful of extra seeds keep long countries (Norway, Chile, Siberia) intact. Because the same builder is fed by plain data, a procedurally generated world (synthetic points + synthetic landmass) drops in without touching the engine or UI.

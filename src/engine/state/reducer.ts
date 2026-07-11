@@ -1,7 +1,7 @@
 import { getPowerDef } from "../ruleset/classic.ts";
 import type { RuleSet } from "../ruleset/types.ts";
 import { IllegalActionError } from "../types.ts";
-import type { AreaId, PhaseId, PowerId } from "../types.ts";
+import type { AreaId, PowerId } from "../types.ts";
 import { getArea, neighborsOf } from "../world/classic.ts";
 import type { WorldDefinition } from "../world/types.ts";
 import type { Action } from "./actions.ts";
@@ -15,7 +15,8 @@ import {
   withArea,
   withPower,
 } from "./helpers.ts";
-import { endPhaseFor } from "./phases.ts";
+import { canBuild, canDiplomacy, canEspionage, canSubvert } from "./legalActions.ts";
+import { endTurnFor } from "./phases.ts";
 import { Rng } from "./rng.ts";
 import { changeControl } from "./scoring.ts";
 
@@ -31,11 +32,10 @@ function requireActivePower(state: GameState): PowerId {
   return state.activePower;
 }
 
-function requirePhase(state: GameState, phase: PhaseId): void {
-  if (state.phase !== phase) {
-    throw new IllegalActionError(
-      `Action requires phase ${phase} but current phase is ${state.phase}`,
-    );
+/** Guard an action against the current season's gate (throws loudly if not). */
+function requireCan(allowed: boolean, what: string): void {
+  if (!allowed) {
+    throw new IllegalActionError(`Cannot ${what} this turn (not allowed this season)`);
   }
 }
 
@@ -66,7 +66,7 @@ function buildArmy(
   area: AreaId,
   troops: number,
 ): GameState {
-  requirePhase(state, "ARMY_BUILD");
+  requireCan(canBuild(state), "build armies");
   const a = requireOwnedBy(state, area, power);
   if (a.supplyCenterOf !== power) {
     throw new IllegalActionError(`Area ${area} is not a supply center of '${power}'`);
@@ -91,7 +91,7 @@ function buildFleet(
   area: AreaId,
   fleets: number,
 ): GameState {
-  requirePhase(state, "FLEET_BUILD");
+  requireCan(canBuild(state), "build fleets");
   const a = requireOwnedBy(state, area, power);
   if (a.supplyCenterOf !== power) {
     throw new IllegalActionError(`Area ${area} is not a supply center of '${power}'`);
@@ -117,7 +117,7 @@ function fortify(
   power: PowerId,
   area: AreaId,
 ): GameState {
-  requirePhase(state, "FORTIFY");
+  requireCan(canBuild(state), "fortify");
   const a = requireOwnedBy(state, area, power);
   if (a.fortified) {
     throw new IllegalActionError(`Area ${area} is already fortified`);
@@ -134,7 +134,7 @@ function loanPower(
   target: PowerId,
   amount: number,
 ): ReduceResult {
-  requirePhase(state, "ECONOMIC_AID");
+  requireCan(canDiplomacy(state), "send aid");
   if (target === from) {
     throw new IllegalActionError("Cannot loan to yourself");
   }
@@ -165,7 +165,7 @@ function loanMinor(
   area: AreaId,
   amount: number,
 ): GameState {
-  requirePhase(state, "ECONOMIC_AID");
+  requireCan(canDiplomacy(state), "fund a minor");
   const a = getAreaState(state, area);
   if (a.owner !== null) {
     throw new IllegalActionError(`Area ${area} is not a neutral minor`);
@@ -183,20 +183,28 @@ function spy(
   power: PowerId,
   area: AreaId,
 ): ReduceResult {
-  requirePhase(state, "ESPIONAGE");
+  requireCan(canEspionage(state), "spy");
   const a = getAreaState(state, area);
   const cost =
     a.fortified || a.supplyCenterOf !== null
       ? ruleSet.costs.spyFortified
       : ruleSet.costs.spyMinor;
   const p = spend(getPowerState(state, power), cost);
-  const next = withPower(state, p);
+  const next = recordIntel(withPower(state, p), power, area);
   return {
     state: next,
     events: [
       { type: "SPY_RESULT", by: power, area, troops: a.troops, income: a.income },
     ],
   };
+}
+
+/** Adds an area to a power's known-garrison set (deduplicated). */
+function recordIntel(state: GameState, power: PowerId, area: AreaId): GameState {
+  const key = String(power);
+  const known = state.intel[key] ?? [];
+  if (known.includes(area)) return state;
+  return { ...state, intel: { ...state.intel, [key]: [...known, area] } };
 }
 
 function subvert(
@@ -206,7 +214,7 @@ function subvert(
   area: AreaId,
   amount: number,
 ): ReduceResult {
-  requirePhase(state, "SUBVERSION");
+  requireCan(canSubvert(state), "subvert");
   const a = getAreaState(state, area);
   if (a.owner !== null) {
     throw new IllegalActionError(`Area ${area} is not a neutral minor`);
@@ -244,9 +252,8 @@ function moveArmy(
   to: AreaId,
   troops: number,
 ): GameState {
-  requirePhase(state, "ARMY_MOVE");
-  if (state.movesRemaining <= 0) {
-    throw new IllegalActionError("No army moves remaining this phase");
+  if (state.armyMovesRemaining <= 0) {
+    throw new IllegalActionError("No army moves remaining this turn");
   }
   const src = requireOwnedBy(state, from, power);
   if (!neighborsOf(world, from).includes(to)) {
@@ -263,7 +270,7 @@ function moveArmy(
   return {
     ...next,
     pending: [...next.pending, move],
-    movesRemaining: next.movesRemaining - 1,
+    armyMovesRemaining: next.armyMovesRemaining - 1,
     tick: next.tick + 1,
   };
 }
@@ -278,9 +285,8 @@ function moveFleet(
   fleets: number,
   troops: number,
 ): GameState {
-  requirePhase(state, "FLEET_MOVE");
-  if (state.movesRemaining <= 0) {
-    throw new IllegalActionError("No fleet moves remaining this phase");
+  if (state.fleetMovesRemaining <= 0) {
+    throw new IllegalActionError("No fleet moves remaining this turn");
   }
   const src = requireOwnedBy(state, from, power);
   if (!getArea(world, from).isPort) {
@@ -309,7 +315,7 @@ function moveFleet(
   return {
     ...next,
     pending: [...next.pending, move],
-    movesRemaining: next.movesRemaining - 1,
+    fleetMovesRemaining: next.fleetMovesRemaining - 1,
     tick: next.tick + 1,
   };
 }
@@ -366,8 +372,8 @@ export function reduce(
         ),
         events: [],
       };
-    case "END_PHASE":
-      return { state: endPhaseFor(state, ruleSet), events: [] };
+    case "END_TURN":
+      return { state: endTurnFor(state, ruleSet), events: [] };
     default: {
       const exhaustive: never = action;
       throw new IllegalActionError(`Unknown action ${JSON.stringify(exhaustive)}`);

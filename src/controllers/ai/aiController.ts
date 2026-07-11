@@ -8,6 +8,7 @@ import {
 } from "../../engine/state/legalActions.ts";
 import { reduce } from "../../engine/state/reducer.ts";
 import { getPowerState, isAtWar } from "../../engine/state/helpers.ts";
+import { isFoundingTurn } from "../../engine/state/phases.ts";
 import type { AreaState, GameState } from "../../engine/state/gameState.ts";
 import type { Action } from "../../engine/state/actions.ts";
 import { getPowerDef } from "../../engine/ruleset/classic.ts";
@@ -27,23 +28,24 @@ export class AIController implements PlayerController {
   ) {}
 
   public async requestActions(ctx: DecisionContext): Promise<readonly Action[]> {
-    const { view } = ctx;
-    const power = view.power;
-    switch (ctx.phase) {
-      case "ARMY_BUILD":
-        return this.plan(view.state, power, (s) => this.armyBuild(s, power));
-      case "FLEET_BUILD":
-        return this.plan(view.state, power, (s) => this.fleetBuild(s, power));
-      case "SUBVERSION":
-        return this.plan(view.state, power, (s) => this.subvert(s, power));
-      case "ARMY_MOVE":
-        return this.plan(view.state, power, (s) => this.armyMoves(s, power));
-      case "FLEET_MOVE":
-        return this.plan(view.state, power, (s) => this.fleetMoves(s, power));
-      default:
-        // Fortify / Economic Aid / Espionage: the AI passes for now.
-        return [];
+    const state = ctx.view.state;
+    const power = ctx.view.power;
+
+    // Compose the whole turn's proposers, honoring the season gates. Spring
+    // (non-founding) allows building; subversion runs any spring; movement runs
+    // every season. Fortify / economic aid / espionage: the AI passes for now.
+    const proposers: ((s: GameState) => readonly Action[])[] = [];
+    if (state.season === "SPRING" && !isFoundingTurn(state)) {
+      proposers.push((s) => this.armyBuild(s, power));
+      proposers.push((s) => this.fleetBuild(s, power));
     }
+    if (state.season === "SPRING") {
+      proposers.push((s) => this.subvert(s, power));
+    }
+    proposers.push((s) => this.armyMoves(s, power));
+    proposers.push((s) => this.fleetMoves(s, power));
+
+    return this.planTurn(state, proposers);
   }
 
   /** AI aggression / spending grows with difficulty level (0-9). */
@@ -53,23 +55,24 @@ export class AIController implements PlayerController {
   }
 
   /**
-   * Build a phase plan by proposing actions and validating each against a local
-   * simulation, so the returned batch always applies cleanly to the real state.
+   * Build a whole-turn plan by running each proposer against a local simulation
+   * that accumulates prior actions, so the returned batch always applies cleanly
+   * to the real state (and later proposers see the effects of earlier ones).
    */
-  private plan(
+  private planTurn(
     state: GameState,
-    _power: PowerId,
-    propose: (sim: GameState) => readonly Action[],
+    proposers: readonly ((sim: GameState) => readonly Action[])[],
   ): readonly Action[] {
-    void _power;
     const actions: Action[] = [];
     let sim = state;
-    for (const action of propose(sim)) {
-      try {
-        sim = reduce(sim, action, this.ruleSet, this.world).state;
-        actions.push(action);
-      } catch {
-        // Skip any action that turned out illegal against the running simulation.
+    for (const propose of proposers) {
+      for (const action of propose(sim)) {
+        try {
+          sim = reduce(sim, action, this.ruleSet, this.world).state;
+          actions.push(action);
+        } catch {
+          // Skip any action that turned out illegal against the running simulation.
+        }
       }
     }
     return actions;

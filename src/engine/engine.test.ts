@@ -32,9 +32,9 @@ function allAiGame(seed: number, winningScore: number): GameState {
   });
 }
 
-/** Advance one phase (player phase or combat) with AI controllers. */
-async function stepPhase(state: GameState): Promise<GameState> {
-  if (state.phase === "COMBAT") {
+/** Advance one turn (a single power acting, or combat) with AI controllers. */
+async function stepTurn(state: GameState): Promise<GameState> {
+  if (state.stage === "COMBAT") {
     let next = resolveCombat(state, CLASSIC_RULESET, CLASSIC_WORLD).state;
     next = beginNextTurn(next, CLASSIC_RULESET);
     if (next.season === "SPRING") {
@@ -46,19 +46,18 @@ async function stepPhase(state: GameState): Promise<GameState> {
   const power = state.activePower!;
   const actions = await ai.requestActions({
     view: { power, state, ruleSet: CLASSIC_RULESET, world: CLASSIC_WORLD },
-    phase: state.phase,
   });
   let next = state;
   for (const a of actions) {
     next = reduce(next, a, CLASSIC_RULESET, CLASSIC_WORLD).state;
   }
-  return reduce(next, { type: "END_PHASE" }, CLASSIC_RULESET, CLASSIC_WORLD).state;
+  return reduce(next, { type: "END_TURN" }, CLASSIC_RULESET, CLASSIC_WORLD).state;
 }
 
-async function run(state: GameState, phases: number): Promise<GameState> {
+async function run(state: GameState, turns: number): Promise<GameState> {
   let next = state;
-  for (let i = 0; i < phases && next.winner === null; i += 1) {
-    next = await stepPhase(next);
+  for (let i = 0; i < turns && next.winner === null; i += 1) {
+    next = await stepTurn(next);
   }
   return next;
 }

@@ -26,7 +26,7 @@ export type Action =
       readonly fleets: number;
       readonly troops: number;
     }
-  /** Finish the current phase for the active power. */
-  | { readonly type: "END_PHASE" };
+  /** Finish the active power's turn. */
+  | { readonly type: "END_TURN" };
 
 export type ActionType = Action["type"];

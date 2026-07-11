@@ -125,17 +125,6 @@ export const CLASSIC_RULESET: RuleSet = {
     worthResistance: 0.0000002,
     coupGarrison: 1_000,
   },
-  springPhases: [
-    "ARMY_BUILD",
-    "FLEET_BUILD",
-    "FORTIFY",
-    "ECONOMIC_AID",
-    "ESPIONAGE",
-    "SUBVERSION",
-    "ARMY_MOVE",
-    "FLEET_MOVE",
-  ],
-  regularPhases: ["ARMY_MOVE", "FLEET_MOVE"],
 };
 
 /** Convenience lookup for a power definition. */

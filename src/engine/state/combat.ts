@@ -29,14 +29,14 @@ function terrainMultiplier(ruleSet: RuleSet, terrain: number): number {
   return 1 + terrain * ruleSet.combat.terrainDefensePerPoint;
 }
 
-interface BattleResult {
+export interface BattleResult {
   readonly attackerWon: boolean;
   readonly attackerSurvivors: number;
   readonly defenderSurvivors: number;
 }
 
 /** Attrition battle over up to N rounds; decisive by comparing effective power. */
-function fight(
+export function fight(
   attackers: number,
   attEff: number,
   defenders: number,
