@@ -82,8 +82,8 @@ function territorySize(area: Area): number {
 
 /**
  * Neutral garrison strength with a deliberately non-linear spread: most minors
- * are middling, but a few are almost undefended (down to ~1k) and a few are
- * fortress-states (>100k). Bigger/stronger territories skew larger, tiny
+ * are middling (~12k-100k), but a few are almost undefended (down to ~1k) and a
+ * few are fortress-states (>200k). Bigger/stronger territories skew larger, tiny
  * islands smaller. Numbers are intentionally not round multiples of 10k.
  */
 function seedNeutralTroops(rng: Rng, area: Area): number {
@@ -93,11 +93,11 @@ function seedNeutralTroops(rng: Rng, area: Area): number {
     // Barely defended; squared roll clusters near the bottom (~1k).
     base = 1_000 + rng.next() ** 2 * 9_000; // 1k .. 10k
   } else if (roll < 0.82) {
-    base = 12_000 + rng.next() * 48_000; // 12k .. 60k (the common case)
+    base = 12_000 + rng.next() * 88_000; // 12k .. 100k (the common case)
   } else if (roll < 0.95) {
-    base = 62_000 + rng.next() * 58_000; // 62k .. 120k
+    base = 102_000 + rng.next() * 98_000; // 102k .. 200k
   } else {
-    base = 120_000 + rng.next() ** 1.5 * 140_000; // 120k .. 260k (rare fortress)
+    base = 200_000 + rng.next() ** 1.5 * 200_000; // 200k .. 400k (rare fortress)
   }
 
   // Territory size nudges the garrison: ~0.6x for a small island, ~1.2x for a

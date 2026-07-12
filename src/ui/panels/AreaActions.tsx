@@ -214,34 +214,55 @@ function AmountForm({
   const [amount, setAmount] = useState(100_000);
 
   if (kind === "BUILD_ARMY") {
-    const cost = (troops / 10_000) * powerDef.armyCostPer10k;
+    const step = 10_000;
+    // The only cap is affordability: let the player sink everything into troops.
+    const max = Math.floor(treasury / powerDef.armyCostPer10k) * step;
+    if (max < step) {
+      return (
+        <div className="popup-form">
+          <p className="muted popup-empty">Not enough treasury to build troops here.</p>
+        </div>
+      );
+    }
+    const value = Math.min(Math.max(troops, step), max);
+    const cost = (value / step) * powerDef.armyCostPer10k;
     return (
       <div className="popup-form">
         <label>
-          {troops.toLocaleString()} troops
-          <input type="range" min={10_000} max={500_000} step={10_000} value={troops} onChange={(e) => setTroops(Number(e.target.value))} />
+          {value.toLocaleString()} troops
+          <input type="range" min={step} max={max} step={step} value={value} onChange={(e) => setTroops(Number(e.target.value))} />
         </label>
         <ConfirmRow
           cost={cost}
           treasury={treasury}
-          onConfirm={() => playAction({ type: "BUILD_ARMY", area, troops })}
+          onConfirm={() => playAction({ type: "BUILD_ARMY", area, troops: value })}
         />
       </div>
     );
   }
 
   if (kind === "BUILD_FLEET") {
-    const cost = (fleets / 5) * powerDef.navyCostPer5;
+    const step = 5;
+    const max = Math.floor(treasury / powerDef.navyCostPer5) * step;
+    if (max < step) {
+      return (
+        <div className="popup-form">
+          <p className="muted popup-empty">Not enough treasury to build fleets here.</p>
+        </div>
+      );
+    }
+    const value = Math.min(Math.max(fleets, step), max);
+    const cost = (value / step) * powerDef.navyCostPer5;
     return (
       <div className="popup-form">
         <label>
-          {fleets} fleets
-          <input type="range" min={5} max={200} step={5} value={fleets} onChange={(e) => setFleets(Number(e.target.value))} />
+          {value} fleets
+          <input type="range" min={step} max={max} step={step} value={value} onChange={(e) => setFleets(Number(e.target.value))} />
         </label>
         <ConfirmRow
           cost={cost}
           treasury={treasury}
-          onConfirm={() => playAction({ type: "BUILD_FLEET", area, fleets })}
+          onConfirm={() => playAction({ type: "BUILD_FLEET", area, fleets: value })}
         />
       </div>
     );

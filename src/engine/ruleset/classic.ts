@@ -122,7 +122,7 @@ export const CLASSIC_RULESET: RuleSet = {
   },
   subversion: {
     bribeCost: 200_000,
-    baseTroopsPerDollar: 0.05,
+    baseTroopsPerDollar: 0.035,
     worthResistance: 0.0000002,
     bribeVariance: 0.6,
     coupGarrison: 1_000,
