@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { neighborsOf, portAreas } from "../../engine/world/classic.ts";
 import type { AreaId } from "../../engine/types.ts";
@@ -132,6 +132,100 @@ function shapePath(shape: readonly (readonly Point[])[]): string {
 }
 
 /**
+ * A tiny national flag for the six powers, drawn as plain filled rects/shapes so
+ * it renders identically everywhere (emoji flags don't work on Windows). Each
+ * flag is laid out in the box (x, y, w, h). Unknown powers render nothing.
+ */
+function PowerFlag({
+  power,
+  x,
+  y,
+  w,
+  h,
+}: {
+  power: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}): React.JSX.Element | null {
+  const clipId = useId();
+  const vstripes = (a: string, b: string, c: string): React.JSX.Element[] => [
+    <rect key="0" x={x} y={y} width={w / 3} height={h} fill={a} />,
+    <rect key="1" x={x + w / 3} y={y} width={w / 3} height={h} fill={b} />,
+    <rect key="2" x={x + (2 * w) / 3} y={y} width={w / 3} height={h} fill={c} />,
+  ];
+  const hstripes = (a: string, b: string, c: string): React.JSX.Element[] => [
+    <rect key="0" x={x} y={y} width={w} height={h / 3} fill={a} />,
+    <rect key="1" x={x} y={y + h / 3} width={w} height={h / 3} fill={b} />,
+    <rect key="2" x={x} y={y + (2 * h) / 3} width={w} height={h / 3} fill={c} />,
+  ];
+
+  let content: React.ReactNode;
+  switch (power) {
+    case "france":
+      content = vstripes("#0055a4", "#ffffff", "#ef4135");
+      break;
+    case "germany":
+      content = hstripes("#000000", "#dd0000", "#ffce00");
+      break;
+    case "russia":
+      content = hstripes("#ffffff", "#0039a6", "#d52b1e");
+      break;
+    case "japan":
+      content = (
+        <>
+          <rect x={x} y={y} width={w} height={h} fill="#ffffff" />
+          <circle cx={x + w / 2} cy={y + h / 2} r={h * 0.3} fill="#bc002d" />
+        </>
+      );
+      break;
+    case "england": // Union Jack (British flag)
+      content = (
+        <>
+          <clipPath id={clipId}>
+            <rect x={x} y={y} width={w} height={h} />
+          </clipPath>
+          <g clipPath={`url(#${clipId})`}>
+            <rect x={x} y={y} width={w} height={h} fill="#012169" />
+            {/* White saltire (St Andrew), then narrower red saltire (St Patrick) */}
+            <line x1={x} y1={y} x2={x + w} y2={y + h} stroke="#ffffff" strokeWidth={h * 0.34} />
+            <line x1={x + w} y1={y} x2={x} y2={y + h} stroke="#ffffff" strokeWidth={h * 0.34} />
+            <line x1={x} y1={y} x2={x + w} y2={y + h} stroke="#c8102e" strokeWidth={h * 0.14} />
+            <line x1={x + w} y1={y} x2={x} y2={y + h} stroke="#c8102e" strokeWidth={h * 0.14} />
+            {/* White cross (St George), then narrower red cross */}
+            <rect x={x + w * 0.33} y={y} width={w * 0.34} height={h} fill="#ffffff" />
+            <rect x={x} y={y + h * 0.33} width={w} height={h * 0.34} fill="#ffffff" />
+            <rect x={x + w * 0.41} y={y} width={w * 0.18} height={h} fill="#c8102e" />
+            <rect x={x} y={y + h * 0.41} width={w} height={h * 0.18} fill="#c8102e" />
+          </g>
+        </>
+      );
+      break;
+    case "usa":
+      content = (
+        <>
+          <rect x={x} y={y} width={w} height={h} fill="#b22234" />
+          <rect x={x} y={y + h / 6} width={w} height={h / 6} fill="#ffffff" />
+          <rect x={x} y={y + (3 * h) / 6} width={w} height={h / 6} fill="#ffffff" />
+          <rect x={x} y={y + (5 * h) / 6} width={w} height={h / 6} fill="#ffffff" />
+          <rect x={x} y={y} width={w * 0.42} height={h * 0.5} fill="#3c3b6e" />
+        </>
+      );
+      break;
+    default:
+      return null;
+  }
+
+  return (
+    <g style={{ pointerEvents: "none" }}>
+      {content}
+      <rect x={x} y={y} width={w} height={h} fill="none" stroke="#00000088" strokeWidth={h * 0.06} />
+    </g>
+  );
+}
+
+/**
  * Territory markers, clustered tightly on the label anchor so they stay inside
  * even small countries: a gold star for a production hub (supply center), a
  * stone fortress for a fortified area, the troop count, and an anchor + count
@@ -164,8 +258,21 @@ function AreaMarkers({
   // hub star never drifts north into a neighboring (stacked) country. When there
   // is no number to flank they sit compactly beside the center.
   const sideGap = showTroops ? 0.85 * u : 0.25 * u;
+  // Small national flag directly above the cluster for any power-owned area
+  // (ownership is public, so this shows for both your own and enemy territories).
+  const flagW = 0.3 * u;
+  const flagH = 0.2 * u;
   return (
     <>
+      {st.owner !== null && (
+        <PowerFlag
+          power={String(st.owner)}
+          x={cx - flagW / 2}
+          y={cy - badgeR - 0.02 * u - flagH}
+          w={flagW}
+          h={flagH}
+        />
+      )}
       {hasHub && (
         <path
           d={starPath(cx - sideGap, cy, badgeR)}

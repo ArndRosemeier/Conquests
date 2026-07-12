@@ -5,6 +5,7 @@
   "type": "module",
   "description": "A faithful, single-player TypeScript/React remake of SSI's Colonial Conquest (1985).",
   "scripts": {
+    "start": "vite --open",
     "dev": "vite",
     "gen:world": "vite-node scripts/generateEarth.ts",
     "build": "tsc -b && vite build",
