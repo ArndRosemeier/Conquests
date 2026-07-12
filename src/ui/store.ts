@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { AIController } from "../controllers/ai/aiController.ts";
+import { createAI, DEFAULT_AI_VERSION } from "../controllers/ai/factory.ts";
 import type { Persona, PersonaKnobs } from "../controllers/ai/persona.ts";
 import { HumanController } from "../controllers/humanController.ts";
 import type { PlayerController } from "../controllers/types.ts";
@@ -150,7 +150,7 @@ export const useGame = create<StoreState>((set, get) => {
         controllers.set(p.id, human);
         humanPower = p.id;
       } else if (p.control === "ai") {
-        controllers.set(p.id, new AIController(CLASSIC_RULESET, CLASSIC_WORLD));
+        controllers.set(p.id, createAI(DEFAULT_AI_VERSION, CLASSIC_RULESET, CLASSIC_WORLD));
       }
     }
     humanController = human;

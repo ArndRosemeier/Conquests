@@ -36,12 +36,6 @@ export type GameEvent =
       readonly to: PowerId | null;
     }
   | {
-      readonly type: "REGION_BONUS";
-      readonly power: PowerId;
-      readonly region: number;
-      readonly amount: number;
-    }
-  | {
       readonly type: "WAR_DECLARED";
       readonly by: PowerId;
       readonly against: PowerId;

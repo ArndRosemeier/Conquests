@@ -1,5 +1,7 @@
-import { AIController } from "../controllers/ai/aiController.ts";
+import { createAI, DEFAULT_AI_VERSION } from "../controllers/ai/factory.ts";
+import type { AiVersion } from "../controllers/ai/factory.ts";
 import type { PersonaKnobs } from "../controllers/ai/persona.ts";
+import type { PlayerController } from "../controllers/types.ts";
 import { CLASSIC_RULESET } from "../engine/ruleset/classic.ts";
 import { resolveCombat } from "../engine/state/combat.ts";
 import { allAreas } from "../engine/state/helpers.ts";
@@ -25,12 +27,15 @@ export interface SeatPersona {
   readonly id: string;
   readonly name: string;
   readonly knobs: PersonaKnobs;
+  /** Which AI implementation drives this seat. Defaults to the live version. */
+  readonly variant?: AiVersion;
 }
 
 export interface SimPowerResult {
   readonly power: PowerId;
   readonly personaId: string;
   readonly personaName: string;
+  readonly variant: AiVersion;
   readonly score: number;
   readonly areas: number;
   readonly treasury: number;
@@ -66,11 +71,20 @@ export function seededShuffle<T>(items: readonly T[], seed: number): T[] {
   return out;
 }
 
-/** Play one full all-AI game to a winner or the year cap. */
+/** Resolve the AI variant driving a seat (defaults to the live version). */
+function seatVariant(seat: SeatPersona | undefined): AiVersion {
+  return seat?.variant ?? DEFAULT_AI_VERSION;
+}
+
+/** Play one full all-AI game to a winner or the year cap. Each seat is driven by
+ * its persona's chosen AI variant, so v2 and v3 can play head-to-head. */
 export async function playSimGame(
   assignments: ReadonlyMap<PowerId, SeatPersona>,
   opts: SimGameOptions,
-  ai: AIController = new AIController(CLASSIC_RULESET, CLASSIC_WORLD),
+  controllers: Readonly<Record<AiVersion, PlayerController>> = {
+    v2: createAI("v2", CLASSIC_RULESET, CLASSIC_WORLD),
+    v3: createAI("v3", CLASSIC_RULESET, CLASSIC_WORLD),
+  },
 ): Promise<SimGameResult> {
   const controls = new Map<PowerId, PowerControlConfig>();
   for (const power of CLASSIC_RULESET.playOrder) {
@@ -106,7 +120,8 @@ export async function playSimGame(
       }
 
       const power = state.activePower!;
-      const actions = await ai.requestActions({
+      const controller = controllers[seatVariant(assignments.get(power))];
+      const actions = await controller.requestActions({
         view: { power, state, ruleSet: CLASSIC_RULESET, world: CLASSIC_WORLD },
       });
       for (const action of actions) {
@@ -126,6 +141,7 @@ export async function playSimGame(
       power,
       personaId: seat?.id ?? "?",
       personaName: seat?.name ?? "?",
+      variant: seatVariant(seat),
       score: p.score,
       areas: allAreas(state).filter((a) => a.owner === power).length,
       treasury: p.treasury,
@@ -228,4 +244,66 @@ export function crashTestAssignment(
     else map.set(power, pool[oi++ % pool.length]!);
   });
   return map;
+}
+
+// --- A/B testing: two AI versions head-to-head ------------------------------
+
+/**
+ * Build a seat assignment for a head-to-head A/B game: `challengerSeats` of the
+ * powers are driven by the `challenger` AI and the rest by the `baseline`, with
+ * which powers get the challenger rotated each game (for seat fairness) and a
+ * persona dealt to every seat from a seeded shuffle of the pool. Both variants
+ * therefore play the same personas and the same map positions across a batch,
+ * isolating the AI implementation under test.
+ */
+export function abAssignment(
+  pool: readonly SeatPersona[],
+  gameIndex: number,
+  seed: number,
+  challengerSeats: number,
+  challenger: AiVersion = "v3",
+  baseline: AiVersion = "v2",
+): Map<PowerId, SeatPersona> {
+  const powers = CLASSIC_RULESET.playOrder;
+  const personas = seededShuffle(pool, seed + gameIndex);
+  const offset = gameIndex % powers.length;
+  const map = new Map<PowerId, SeatPersona>();
+  powers.forEach((power, idx) => {
+    // Rotate the block of challenger seats around the table each game.
+    const slot = (idx - offset + powers.length) % powers.length;
+    const variant: AiVersion = slot < challengerSeats ? challenger : baseline;
+    const base = personas[idx % personas.length]!;
+    map.set(power, { ...base, variant });
+  });
+  return map;
+}
+
+export interface VariantAggregate {
+  readonly variant: AiVersion;
+  seats: number;
+  wins: number;
+  scoreSum: number;
+  areaSum: number;
+}
+
+/** Roll up performance by AI variant across a batch of A/B games. */
+export function aggregateVariants(results: readonly SimGameResult[]): VariantAggregate[] {
+  const agg = new Map<AiVersion, VariantAggregate>();
+  const get = (v: AiVersion): VariantAggregate => {
+    const existing = agg.get(v);
+    if (existing !== undefined) return existing;
+    const fresh: VariantAggregate = { variant: v, seats: 0, wins: 0, scoreSum: 0, areaSum: 0 };
+    agg.set(v, fresh);
+    return fresh;
+  };
+  for (const r of results) {
+    for (const p of r.powers) {
+      const a = get(p.variant);
+      a.seats += 1;
+      a.scoreSum += p.score;
+      a.areaSum += p.areas;
+      if (r.winner === p.power) a.wins += 1;
+    }
+  }
+  return [...agg.values()].sort((a, b) => b.wins / b.seats - a.wins / a.seats);
 }

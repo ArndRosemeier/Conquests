@@ -30,21 +30,72 @@ import type { DecisionContext, PlayerController } from "../types.ts";
  * comparable. A dollar is worth {@link POINTS_PER_DOLLAR}; recurring area income
  * is valued over a {@link INCOME_HORIZON}-year horizon (income is an asset, a
  * bribe or a build is a one-off cost). Victory points are counted at face value.
+ *
+ * This is the active, evolving controller ("v3"). {@link "./aiControllerV2.ts"}
+ * holds the frozen previous generation as an A/B control group. v3 adds
+ * reinforcement flow: after acting, it marches idle troops one hop toward the
+ * front each turn - but *targeted*, up a value-weighted potential field so force
+ * converges on (and accumulates at) the launch point for the single most valuable
+ * conquest, rather than dribbling toward the nearest edge. This lets it mass a
+ * stack big enough to crack targets it could never afford in one turn's build -
+ * something the myopic greedy loop (and combat's per-move battle resolution)
+ * otherwise never achieves.
  */
 const POINTS_PER_DOLLAR = 1e-5;
 const INCOME_HORIZON = 4;
 
 /** How much a stale enemy garrison estimate is inflated per season of age. */
-const STALE_GROWTH_PER_SEASON = 0.15;
+const STALE_GROWTH_PER_SEASON = 0.08;
 /** Re-scout a border area once its snapshot is at least this many seasons old. */
-const RESPY_AGE_SEASONS = 2;
+const RESPY_AGE_SEASONS = 3;
 /** A tiny assault floor so undefended grabs still send a credible force. */
 const MIN_ASSAULT = 1_000;
 /** Safety cap on the greedy loop and on any single bribe run. */
 const MAX_ITERS = 200;
 const MAX_BRIBES_PER_TARGET = 40;
 /** How many of the nearest overseas ports a naval power will consider scouting. */
-const MAX_SEA_SCOUTS = 10;
+const MAX_SEA_SCOUTS = 6;
+
+// --- tuning (kept local so the shared persona.ts mappings stay identical for
+// the frozen v2 baseline) ----------------------------------------------------
+
+/** Soft cap on *new* scouts committed in a single turn. Espionage is already
+ * instrumental (only scout what you'd attack), so this is a loose backstop
+ * against pathological blanketing rather than the primary throttle. */
+const MAX_SCOUTS_PER_TURN = 12;
+/** Uncertainty haircut applied to the value a scout is expected to unlock. */
+const INTEL_DISCOUNT = 0.6;
+/** Extra weight on grabbing neutral territory, so the economy actually snowballs. */
+const EXPANSION_DRIVE = 2.2;
+/** Scales the reserves knob down: v2 keeps fewer troops idle on defense. */
+const RESERVE_SCALE = 0.6;
+/** Force sent above the bare win-probability bar. Kept low: the VP race rewards
+ * breadth (many cheap grabs) over thick stacks. */
+const ASSAULT_MARGIN = 0.05;
+/** Neutral land grabs have low downside (a lost assault just retreats with
+ * casualties), so v2 accepts a lower win bar against them to grab more, faster. */
+const NEUTRAL_BAR_SCALE = 0.7;
+/** Assumed garrison of an unscouted neutral (common band ~12k-100k), used only to
+ * decide whether scouting it is worthwhile; the real attack uses real intel. */
+const PRIOR_NEUTRAL_TROOPS = 60_000;
+/** Assumed garrison of a never-scouted enemy power area (they defend harder). */
+const PRIOR_ENEMY_TROOPS = 80_000;
+/** How many frontier supply centers leftover cash is spread across. */
+const SPENDDOWN_SPREAD = 3;
+/** Emphasis on an area's victory value. The game is won on the VP race and VP is
+ * only earned by *conquering* areas (never by bribing), so v2 weights VP well
+ * above banked income - it chases the win condition directly. */
+const VP_WEIGHT = 3;
+/** How strongly to favor targets inside a region the power already partly holds.
+ * A consolidated, contiguous empire is more defensible and concentrates force, so
+ * v3 rounds out continents rather than scattering conquests. This is a purely
+ * strategic preference - it is not tied to any income bonus. */
+const CONSOLIDATION = 1.6;
+/** Per-hop attenuation of a front's pull as it propagates back through owned
+ * territory. Near 1 a distant huge prize outshines every nearer target (troops
+ * trek far); near 0 only the immediately-adjacent front matters (dumb nearest-edge
+ * flow). ~0.85 balances distance against value across a typical empire. */
+const REINFORCE_DECAY = 0.85;
 
 /** The AI's fair belief about a foreign area, derived only from its own intel. */
 interface Estimate {
@@ -92,7 +143,9 @@ export class AIController implements PlayerController {
     let sim = state;
 
     for (let iter = 0; iter < MAX_ITERS; iter += 1) {
-      const plans = this.candidates(sim, power, knobs)
+      // Enforce the exploration cap across the whole turn, not per iteration.
+      const spiesLeft = MAX_SCOUTS_PER_TURN - out.filter((a) => a.type === "SPY").length;
+      const plans = this.candidates(sim, power, knobs, spiesLeft)
         .filter((p) => p.score > 0)
         .sort((a, b) => b.score - a.score);
       if (plans.length === 0) break;
@@ -113,11 +166,163 @@ export class AIController implements PlayerController {
 
     // Cash is always spent: dump any remaining treasury into troops.
     const spendDown = this.spendDown(sim, power);
-    if (spendDown !== null && this.applyAll(sim, [spendDown]) !== null) {
-      out.push(spendDown);
+    const afterSpend = this.applyAll(sim, spendDown);
+    if (spendDown.length > 0 && afterSpend !== null) {
+      sim = afterSpend;
+      out.push(...spendDown);
+    }
+
+    // Reinforcement flow: march idle interior troops one hop toward the front,
+    // so force concentrates at launch points over successive turns.
+    const reinforce = this.reinforceActions(sim, power, knobs);
+    if (reinforce.length > 0 && this.applyAll(sim, reinforce) !== null) {
+      out.push(...reinforce);
     }
 
     return out;
+  }
+
+  /**
+   * The pull a foreign target exerts on reinforcements: its holding value, folded
+   * with this power's appetite for taking it, its expansion drive, and how much it
+   * rounds out a region the power already holds. Difficulty is deliberately left
+   * out - the greedy loop already grabs whatever it can win cheaply each turn, so
+   * what remains worth massing for are the high-value targets too big for a single
+   * turn's build. This is the field reinforcement climbs.
+   */
+  private targetPull(state: GameState, power: PowerId, knobs: PersonaKnobs, target: AreaState): number {
+    return (
+      this.worth(target) *
+      this.takeAppetite(state, power, target, knobs) *
+      this.conquestDrive(target) *
+      this.consolidation(state, power, target)
+    );
+  }
+
+  /**
+   * March idle troops one hop toward the front - but *targeted*. Because combat
+   * resolves each move as its own battle (splitting an attack only weakens it) and
+   * reinforcements arrive at end of turn, massing a war-winning stack can only be
+   * done over several turns, which the greedy loop never does on its own.
+   *
+   * Each owned area gets a potential equal to the best conquest reachable from it,
+   * propagated back through owned territory with a per-hop {@link REINFORCE_DECAY}
+   * so nearer prizes outrank equally-valuable distant ones. Every area then ships
+   * its surplus (troops above the defensive reserve) to whichever owned neighbor
+   * stands higher on the field. Force therefore streams toward - and piles up at -
+   * the launch point for the single most valuable target, cracking fortresses the
+   * per-turn budget could never buy through.
+   */
+  private reinforceActions(state: GameState, power: PowerId, knobs: PersonaKnobs): Action[] {
+    let budget = state.armyMovesRemaining;
+    if (budget <= 0) return [];
+    const owned = this.ownedIds(state, power);
+    const navalW = navalWeight(knobs.naval);
+
+    // Seed each owned area with the pull of its best adjacent land conquest.
+    const potential = new Map<AreaId, number>();
+    for (const id of owned) {
+      let best = 0;
+      for (const nb of neighborsOf(this.world, id)) {
+        const t = state.areas[String(nb)];
+        if (t === undefined || t.owner === power) continue;
+        const v = this.targetPull(state, power, knobs, t);
+        if (v > best) best = v;
+      }
+      potential.set(id, best);
+    }
+
+    // Naval staging: draw a landing force to the owned port nearest the single
+    // best overseas target, so amphibious assaults launch from a fat stack.
+    const ownedPorts = [...owned].filter((id) => getArea(this.world, id).isPort);
+    if (navalW > 0 && ownedPorts.length > 0) {
+      let bestTarget: AreaState | null = null;
+      let bestVal = 0;
+      for (const t of Object.values(state.areas)) {
+        if (t.owner === power || !getArea(this.world, t.id).isPort) continue;
+        const v = this.targetPull(state, power, knobs, t) * navalW;
+        if (v > bestVal) {
+          bestVal = v;
+          bestTarget = t;
+        }
+      }
+      if (bestTarget !== null) {
+        let launch: AreaId | null = null;
+        let bestD = Infinity;
+        for (const pid of ownedPorts) {
+          const d = this.nearestDistance(bestTarget.id, [pid]);
+          if (d < bestD) {
+            bestD = d;
+            launch = pid;
+          }
+        }
+        if (launch !== null) {
+          potential.set(launch, Math.max(potential.get(launch) ?? 0, bestVal));
+        }
+      }
+    }
+
+    // Diffuse the potential inward: P[a] = max(own goal, best neighbor * decay).
+    // A bounded number of sweeps (>= the owned graph's diameter) reaches a fixpoint.
+    for (let sweep = 0; sweep < owned.size; sweep += 1) {
+      let changed = false;
+      for (const id of owned) {
+        let p = potential.get(id)!;
+        for (const nb of neighborsOf(this.world, id)) {
+          if (!owned.has(nb)) continue;
+          const cand = potential.get(nb)! * REINFORCE_DECAY;
+          if (cand > p + 1e-9) {
+            p = cand;
+            changed = true;
+          }
+        }
+        potential.set(id, p);
+      }
+      if (!changed) break;
+    }
+
+    // Send each area's surplus to the uphill neighbor (higher potential), biggest,
+    // most valuable flows first so a tight move budget funds the decisive ones.
+    interface Flow {
+      readonly from: AreaId;
+      readonly to: AreaId;
+      readonly troops: number;
+      readonly priority: number;
+    }
+    const flows: Flow[] = [];
+    for (const id of owned) {
+      const area = state.areas[String(id)];
+      if (area === undefined) continue;
+      const surplus = this.surplus(state, power, knobs, area);
+      if (surplus <= 0) continue;
+      const here = potential.get(id)!;
+
+      let dest: AreaId | null = null;
+      let destP = here;
+      let destTroops = -1;
+      for (const nb of neighborsOf(this.world, id)) {
+        if (!owned.has(nb)) continue;
+        const pn = potential.get(nb)!;
+        if (pn <= here + 1e-9) continue; // must be strictly uphill
+        const cand = state.areas[String(nb)];
+        if (cand === undefined) continue;
+        if (pn > destP + 1e-9 || (Math.abs(pn - destP) <= 1e-9 && cand.troops > destTroops)) {
+          dest = nb;
+          destP = pn;
+          destTroops = cand.troops;
+        }
+      }
+      if (dest !== null) flows.push({ from: id, to: dest, troops: surplus, priority: surplus * destP });
+    }
+
+    flows.sort((a, b) => b.priority - a.priority || (a.from < b.from ? -1 : 1));
+    const actions: Action[] = [];
+    for (const f of flows) {
+      if (budget <= 0) break;
+      actions.push({ type: "MOVE_ARMY", from: f.from, to: f.to, troops: f.troops });
+      budget -= 1;
+    }
+    return actions;
   }
 
   /** Apply a whole action list; returns the resulting state, or null if any failed. */
@@ -133,9 +338,14 @@ export class AIController implements PlayerController {
     return next;
   }
 
-  private candidates(state: GameState, power: PowerId, knobs: PersonaKnobs): Plan[] {
+  private candidates(
+    state: GameState,
+    power: PowerId,
+    knobs: PersonaKnobs,
+    spiesLeft: number,
+  ): Plan[] {
     const plans: Plan[] = [];
-    plans.push(...this.spyPlans(state, power, knobs));
+    plans.push(...this.spyPlans(state, power, knobs, spiesLeft));
     plans.push(...this.conquerLandPlans(state, power, knobs));
     plans.push(...this.conquerSeaPlans(state, power, knobs));
     plans.push(...this.bribePlans(state, power, knobs));
@@ -169,9 +379,32 @@ export class AIController implements PlayerController {
     };
   }
 
-  /** Points value of holding an area: its victory points plus banked income. */
+  /**
+   * A prior belief about a foreign area used only when deciding whether to *scout*
+   * it (the AI has no real intel yet, so it must not peek at live troops). Neutrals
+   * get a fixed common-case garrison; enemy powers reuse stale intel if any, else a
+   * harder default. The actual assault is always sized from real, post-scout intel.
+   */
+  private priorEstimate(state: GameState, power: PowerId, area: AreaState): Estimate {
+    if (area.owner === null) {
+      return { troops: PRIOR_NEUTRAL_TROOPS, fleets: 0, fortified: false, known: true };
+    }
+    const view = perceive(state, power, area.id);
+    if (view.kind === "report") {
+      return {
+        troops: Math.ceil(view.troops * (1 + STALE_GROWTH_PER_SEASON * view.ageSeasons)),
+        fleets: view.fleets,
+        fortified: view.fortified,
+        known: true,
+      };
+    }
+    return { troops: PRIOR_ENEMY_TROOPS, fleets: 0, fortified: false, known: true };
+  }
+
+  /** Points value of holding an area: its victory points (weighted, since VP wins
+   * the game) plus banked income. */
   private worth(area: AreaState): number {
-    return area.victoryValue + area.income * POINTS_PER_DOLLAR * INCOME_HORIZON;
+    return area.victoryValue * VP_WEIGHT + area.income * POINTS_PER_DOLLAR * INCOME_HORIZON;
   }
 
   private incomeWorth(area: AreaState): number {
@@ -180,6 +413,42 @@ export class AIController implements PlayerController {
 
   private points(dollars: number): number {
     return dollars * POINTS_PER_DOLLAR;
+  }
+
+  /** Extra appetite for grabbing neutral land, so the economy actually snowballs. */
+  private conquestDrive(target: AreaState): number {
+    return target.owner === null ? EXPANSION_DRIVE : 1;
+  }
+
+  private regionMembersCache: Map<number, readonly AreaId[]> | null = null;
+
+  /** Area ids grouped by region (cached; the world is immutable). */
+  private regionMembers(): Map<number, readonly AreaId[]> {
+    if (this.regionMembersCache === null) {
+      const m = new Map<number, AreaId[]>();
+      for (const a of this.world.areas) {
+        const list = m.get(a.region) ?? [];
+        list.push(a.id);
+        m.set(a.region, list);
+      }
+      this.regionMembersCache = m;
+    }
+    return this.regionMembersCache;
+  }
+
+  /**
+   * Multiplier favoring targets in a region the power already partly controls, so
+   * the AI consolidates a contiguous bloc (defensible, force-concentrated) instead
+   * of scattering conquests. Grows with the share of the region already held. A
+   * strategic preference only - unrelated to income.
+   */
+  private consolidation(state: GameState, power: PowerId, area: AreaState): number {
+    const region = getArea(this.world, area.id).region;
+    const ids = this.regionMembers().get(region) ?? [];
+    if (ids.length <= 1) return 1;
+    let owned = 0;
+    for (const id of ids) if (state.areas[String(id)]?.owner === power) owned += 1;
+    return 1 + CONSOLIDATION * (owned / ids.length);
   }
 
   /** Enemy pressure on an owned area: the strongest scouted hostile neighbor. */
@@ -194,12 +463,12 @@ export class AIController implements PlayerController {
     return worst;
   }
 
-  /** Troops that must stay to defend an area, per the reserves knob. */
+  /** Troops that must stay to defend an area, per the reserves knob (scaled down in v2). */
   private reserveNeeded(state: GameState, power: PowerId, knobs: PersonaKnobs, id: AreaId): number {
     const threat = this.localThreat(state, power, id);
     return Math.max(
       this.ruleSet.limits.minGarrison,
-      Math.ceil(defenseSafety(knobs.reserves) * threat),
+      Math.ceil(RESERVE_SCALE * defenseSafety(knobs.reserves) * threat),
     );
   }
 
@@ -227,9 +496,10 @@ export class AIController implements PlayerController {
   }
 
   /**
-   * Troops needed to reach this persona's win-probability bar against a target,
-   * and the predicted win probability at that force. Sizing is analytic (no
-   * Monte-Carlo) so many candidates can be scored cheaply.
+   * Troops needed to clear this persona's win-probability bar against a target
+   * (plus a margin for a thicker, compounding stack), and the predicted win
+   * probability at that force. Sizing is analytic (no Monte-Carlo) so many
+   * candidates can be scored cheaply.
    */
   private assault(target: AreaState, est: Estimate, knobs: PersonaKnobs, power: PowerId): {
     troops: number;
@@ -238,8 +508,11 @@ export class AIController implements PlayerController {
     const defPower = est.troops * this.defEff(target, est);
     const attEff = this.attEff(power);
     const thr = riskThreshold(knobs.risk);
-    // predictedWinProb(ratio) = clamp01((ratio - 0.7) / 0.9); solve for ratio at thr.
-    const neededRatio = 0.7 + 0.9 * thr;
+    // predictedWinProb(ratio) = clamp01((ratio - 0.7) / 0.9); solve for ratio at thr,
+    // add a small margin, and (for low-downside neutral grabs) accept a lower bar
+    // so the AI spreads across more cheap targets rather than over-committing.
+    const neutralScale = target.owner === null ? NEUTRAL_BAR_SCALE : 1;
+    const neededRatio = (0.7 + 0.9 * thr) * (1 + ASSAULT_MARGIN) * neutralScale;
     const troops = Math.max(MIN_ASSAULT, Math.ceil((neededRatio * defPower) / attEff));
     const ratio = (attEff * troops) / Math.max(defPower, 1);
     const winProb = Math.max(0, Math.min(1, (ratio - 0.7) / 0.9));
@@ -284,14 +557,46 @@ export class AIController implements PlayerController {
   }
 
   /**
-   * Scout targets whose intel unlocks future attacks: every land-adjacent
-   * foreign area, plus - crucially for island/naval powers - the nearest
-   * unscouted overseas ports. Without the latter, sea powers stay blind and
-   * never invade, so the whole naval identity would be inert.
+   * The value a scout is expected to unlock: the payoff of the best attack it
+   * would enable against this area, evaluated under a prior garrison (since the
+   * true count is still unknown). This is what makes v2's espionage *instrumental*
+   * - it only scouts things it plausibly intends to take.
    */
-  private spyPlans(state: GameState, power: PowerId, knobs: PersonaKnobs): Plan[] {
-    if (!canEspionage(state)) return [];
+  private expectedUnlock(
+    state: GameState,
+    power: PowerId,
+    knobs: PersonaKnobs,
+    area: AreaState,
+    seaScale: number,
+  ): number {
+    const est = this.priorEstimate(state, power, area);
+    const { winProb } = this.assault(area, est, knobs, power);
+    return (
+      this.worth(area) *
+      winProb *
+      this.takeAppetite(state, power, area, knobs) *
+      this.conquestDrive(area) *
+      this.consolidation(state, power, area) *
+      seaScale
+    );
+  }
+
+  /**
+   * Scout only where intel pays for itself: land-adjacent foreign areas and - for
+   * port powers - the nearest overseas ports, each scored by the conquest it would
+   * unlock (times a discount) minus the spy's cost. At most {@link MAX_SCOUTS_PER_TURN}
+   * scouts are taken per turn, so the AI probes purposefully instead of blanketing
+   * the map with speculative espionage.
+   */
+  private spyPlans(
+    state: GameState,
+    power: PowerId,
+    knobs: PersonaKnobs,
+    spiesLeft: number,
+  ): Plan[] {
+    if (spiesLeft <= 0 || !canEspionage(state)) return [];
     const owned = this.ownedIds(state, power);
+    const treasury = getPowerState(state, power).treasury;
     const plans: Plan[] = [];
     const seen = new Set<AreaId>();
 
@@ -301,8 +606,11 @@ export class AIController implements PlayerController {
       const a = state.areas[String(id)];
       if (a === undefined || a.owner === power) return;
       if (!this.needsIntel(state, power, id)) return;
-      const value = this.worth(a) * 0.3 * appetite(knobs.intelligence) * seaScale;
-      plans.push({ score: value - this.points(this.spyCost(a)), actions: [{ type: "SPY", area: id }] });
+      const cost = this.spyCost(a);
+      if (cost > treasury) return;
+      const unlocked = this.expectedUnlock(state, power, knobs, a, seaScale);
+      const score = unlocked * INTEL_DISCOUNT - this.points(cost);
+      if (score > 0) plans.push({ score, actions: [{ type: "SPY", area: id }] });
     };
 
     // Land-adjacent foreign areas.
@@ -323,7 +631,8 @@ export class AIController implements PlayerController {
       for (const t of nearest) addTarget(t.id, navalW);
     }
 
-    return plans;
+    // Keep only the best few; the running turn cap does the rest.
+    return plans.sort((a, b) => b.score - a.score).slice(0, spiesLeft);
   }
 
   /** Shortest wrap-aware distance from an area to any of the given areas. */
@@ -356,14 +665,25 @@ export class AIController implements PlayerController {
     for (const tid of targets) {
       const target = state.areas[String(tid)];
       if (target === undefined) continue;
-      const est = this.estimate(state, power, tid);
-      if (!est.known) continue; // never attack blind
+      let est = this.estimate(state, power, tid);
+      if (!est.known) {
+        // Never attack an unscouted *power* blind, but a static neutral can be
+        // grabbed on a prior (a failed overland assault just retreats): this lets
+        // v2 expand at conquest speed instead of scouting speed.
+        if (target.owner !== null) continue;
+        est = this.priorEstimate(state, power, target);
+      }
       const { troops: need, winProb } = this.assault(target, est, knobs, power);
 
       const plan = this.bestLandLaunch(state, power, knobs, target, need, owned);
       if (plan === null) continue;
 
-      const value = this.worth(target) * winProb * this.takeAppetite(state, power, target, knobs);
+      const value =
+        this.worth(target) *
+        winProb *
+        this.takeAppetite(state, power, target, knobs) *
+        this.conquestDrive(target) *
+        this.consolidation(state, power, target);
       plans.push({ score: value - this.points(plan.buildCost), actions: plan.actions });
     }
     return plans;
@@ -420,8 +740,13 @@ export class AIController implements PlayerController {
     for (const target of Object.values(state.areas)) {
       if (target.owner === power) continue;
       if (!getArea(this.world, target.id).isPort) continue;
-      const est = this.estimate(state, power, target.id);
-      if (!est.known) continue;
+      let est = this.estimate(state, power, target.id);
+      if (!est.known) {
+        // As on land, grab unscouted neutral ports on a prior; the cross-region
+        // annihilation downside is still priced via expectedLoss below.
+        if (target.owner !== null) continue;
+        est = this.priorEstimate(state, power, target);
+      }
       const { troops: need, winProb } = this.assault(target, est, knobs, power);
 
       const plan = this.bestSeaLaunch(state, power, knobs, target, need, est, ports);
@@ -442,7 +767,12 @@ export class AIController implements PlayerController {
         : 0;
 
       const value =
-        this.worth(target) * winProb * this.takeAppetite(state, power, target, knobs) * navalW;
+        this.worth(target) *
+        winProb *
+        this.takeAppetite(state, power, target, knobs) *
+        this.conquestDrive(target) *
+        this.consolidation(state, power, target) *
+        navalW;
       plans.push({
         score: value - this.points(plan.buildCost) - this.points(expectedLoss),
         actions: plan.actions,
@@ -573,31 +903,27 @@ export class AIController implements PlayerController {
   }
 
   /**
-   * Spend every remaining dollar. Normally on troops at the best frontier supply
-   * center; but a port power whose idle troops already exceed its fleet lift
-   * capacity buys transport instead, so island/naval powers can actually project
-   * force rather than stockpiling armies they can never ship.
+   * Spend every remaining dollar. A port power short on hulls buys transport so it
+   * can project force; otherwise cash is spread across the busiest frontier supply
+   * centers (not one pile), so next turn several fronts can push at once.
    */
-  private spendDown(state: GameState, power: PowerId): Action | null {
-    if (!canBuild(state)) return null;
+  private spendDown(state: GameState, power: PowerId): readonly Action[] {
+    if (!canBuild(state)) return [];
     const owned = this.ownedIds(state, power);
     const def = getPowerDef(this.ruleSet, power);
     const treasury = getPowerState(state, power).treasury;
 
-    // Choose the "front" supply center; for a port power, also track a port SC.
-    let bestId: AreaId | null = null;
-    let bestFrontier = -1;
+    // Rank supply centers by how much frontier they touch; track a port SC too.
+    const scs: { id: AreaId; frontier: number }[] = [];
     let portSc: AreaId | null = null;
     for (const id of owned) {
       const area = state.areas[String(id)];
       if (area === undefined || area.supplyCenterOf !== power) continue;
       const frontier = neighborsOf(this.world, id).filter((nb) => !owned.has(nb)).length;
-      if (frontier > bestFrontier) {
-        bestFrontier = frontier;
-        bestId = id;
-      }
+      scs.push({ id, frontier });
       if (portSc === null && getArea(this.world, id).isPort) portSc = id;
     }
+    scs.sort((a, b) => b.frontier - a.frontier);
 
     // A port power short on hulls buys fleets to lift its stranded troops.
     if (portSc !== null) {
@@ -613,13 +939,25 @@ export class AIController implements PlayerController {
       if (capacity < idleTroops) {
         const groups = Math.floor(treasury / def.navyCostPer5);
         if (groups > 0) {
-          return { type: "BUILD_FLEET", area: portSc, fleets: groups * this.ruleSet.costs.fleetBuildIncrement };
+          return [
+            { type: "BUILD_FLEET", area: portSc, fleets: groups * this.ruleSet.costs.fleetBuildIncrement },
+          ];
         }
       }
     }
 
-    const chunks = Math.floor(treasury / def.armyCostPer10k);
-    if (chunks <= 0 || bestId === null) return null;
-    return { type: "BUILD_ARMY", area: bestId, troops: chunks * this.ruleSet.costs.troopBuildIncrement };
+    let chunks = Math.floor(treasury / def.armyCostPer10k);
+    if (chunks <= 0 || scs.length === 0) return [];
+
+    // Spread the troop budget across the top frontier supply centers.
+    const spread = Math.min(SPENDDOWN_SPREAD, scs.length);
+    const inc = this.ruleSet.costs.troopBuildIncrement;
+    const actions: Action[] = [];
+    for (let i = 0; i < spread && chunks > 0; i += 1) {
+      const share = i === 0 ? chunks - Math.floor(chunks / spread) * (spread - 1) : Math.floor(chunks / spread);
+      if (share <= 0) continue;
+      actions.push({ type: "BUILD_ARMY", area: scs[i]!.id, troops: share * inc });
+    }
+    return actions;
   }
 }

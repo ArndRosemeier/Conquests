@@ -109,7 +109,6 @@ export const CLASSIC_RULESET: RuleSet = {
     terrainDefensePerPoint: 0.25,
   },
   economy: {
-    regionBonusMax: 5_000_000,
     guaranteedPeaceLoan: 8_000_000,
     minPeaceLoan: 300_000,
   },

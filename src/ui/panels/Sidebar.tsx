@@ -19,8 +19,6 @@ function describe(e: GameEvent, ruleSet: RuleSet, world: WorldDefinition): strin
       return `${pn(e.by)} ${e.coup ? "couped" : "bribed"} ${an(e.area)}`;
     case "SPY_RESULT":
       return `${pn(e.by)} spied ${an(e.area)}`;
-    case "REGION_BONUS":
-      return `${pn(e.power)} region bonus $${(e.amount / 1_000_000).toFixed(1)}M`;
     case "WAR_DECLARED":
       return `${pn(e.by)} declares war on ${pn(e.against)}`;
     case "WAR_ENDED":

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AIController } from "../controllers/ai/aiController.ts";
+import { createAI, DEFAULT_AI_VERSION } from "../controllers/ai/factory.ts";
 import { knobs } from "../controllers/ai/persona.ts";
 import { HumanController } from "../controllers/humanController.ts";
 import type { PlayerController } from "../controllers/types.ts";
@@ -24,7 +24,7 @@ describe("human handoff", () => {
         controllers.set(p, human);
       } else {
         controls.set(p, { control: "ai", persona: knobs({}) });
-        controllers.set(p, new AIController(CLASSIC_RULESET, CLASSIC_WORLD));
+        controllers.set(p, createAI(DEFAULT_AI_VERSION, CLASSIC_RULESET, CLASSIC_WORLD));
       }
     }
 

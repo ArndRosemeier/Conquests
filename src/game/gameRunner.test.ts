@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AIController } from "../controllers/ai/aiController.ts";
+import { createAI, DEFAULT_AI_VERSION } from "../controllers/ai/factory.ts";
 import { knobs } from "../controllers/ai/persona.ts";
 import type { PlayerController } from "../controllers/types.ts";
 import { CLASSIC_RULESET } from "../engine/ruleset/classic.ts";
@@ -16,7 +16,7 @@ describe("GameRunner (all AI)", () => {
     const controllers = new Map<PowerId, PlayerController>();
     for (const p of CLASSIC_RULESET.playOrder) {
       controls.set(p, { control: "ai", persona: knobs({}) });
-      controllers.set(p, new AIController(CLASSIC_RULESET, CLASSIC_WORLD));
+      controllers.set(p, createAI(DEFAULT_AI_VERSION, CLASSIC_RULESET, CLASSIC_WORLD));
     }
 
     const initial = createGame({

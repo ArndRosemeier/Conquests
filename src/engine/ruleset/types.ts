@@ -57,8 +57,6 @@ export interface CombatRules {
 }
 
 export interface EconomyRules {
-  /** Maximum bonus (dollars) for controlling an entire region. */
-  readonly regionBonusMax: number;
   /** Loan amount that guarantees ending a war with a computer power. */
   readonly guaranteedPeaceLoan: number;
   /** Minimum loan that has any chance of ending a war. */

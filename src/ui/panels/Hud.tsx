@@ -53,7 +53,7 @@ export function Hud(): React.JSX.Element | null {
           {humanDef.name}
         </span>
         <span className="hud-stat">Treasury ${(human.treasury / 1_000_000).toFixed(1)}M</span>
-        <span className="hud-stat" title="Income collected at the start of each year (areas + region bonuses)">
+        <span className="hud-stat" title="Income collected at the start of each year">
           Income ${(annualIncome / 1_000_000).toFixed(1)}M/yr
         </span>
         <span className="hud-stat">Score {Math.max(0, human.score)}</span>

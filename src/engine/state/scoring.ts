@@ -65,84 +65,42 @@ function areasByOwner(state: GameState): Map<string, AreaState[]> {
 
 /**
  * Annual economy applied at the start of each year: every controlled area pays
- * its income into the owner's treasury, plus a bonus for any fully controlled
- * region (up to the ruleset maximum).
+ * its income into the owner's treasury.
  */
 export function applyAnnualEconomy(
   state: GameState,
   ruleSet: RuleSet,
-  world: WorldDefinition,
+  _world: WorldDefinition,
 ): { state: GameState; events: readonly GameEvent[] } {
-  const events: GameEvent[] = [];
   const owned = areasByOwner(state);
   let next = state;
-
-  const regionAreaIds = new Map<number, AreaId[]>();
-  for (const area of world.areas) {
-    const list = regionAreaIds.get(area.region) ?? [];
-    list.push(area.id);
-    regionAreaIds.set(area.region, list);
-  }
 
   for (const power of ruleSet.playOrder) {
     const p = getPowerState(next, power);
     if (p.eliminated) continue;
 
     const areas = owned.get(String(power)) ?? [];
-    let gain = areas.reduce((sum, a) => sum + a.income, 0);
-
-    for (const [region, ids] of regionAreaIds) {
-      const controlsAll =
-        ids.length > 0 && ids.every((id) => getAreaState(next, id).owner === power);
-      if (controlsAll) {
-        const bonus = Math.min(
-          ruleSet.economy.regionBonusMax,
-          ids.reduce((sum, id) => sum + getAreaState(next, id).income, 0),
-        );
-        gain += bonus;
-        events.push({ type: "REGION_BONUS", power, region, amount: bonus });
-      }
-    }
+    const gain = areas.reduce((sum, a) => sum + a.income, 0);
 
     next = withPower(next, { ...p, treasury: p.treasury + gain });
   }
 
-  return { state: next, events };
+  return { state: next, events: [] };
 }
 
 /**
  * The income a power would collect at the next annual payout given the current
- * board: every controlled area's income plus any fully-controlled region bonus
- * (capped per the ruleset). Mirrors applyAnnualEconomy without mutating state.
+ * board: every controlled area's income. Mirrors applyAnnualEconomy without
+ * mutating state.
  */
 export function annualIncomeFor(
   state: GameState,
-  ruleSet: RuleSet,
-  world: WorldDefinition,
+  _ruleSet: RuleSet,
+  _world: WorldDefinition,
   power: PowerId,
 ): number {
-  const areas = (areasByOwner(state).get(String(power)) ?? []);
-  let gain = areas.reduce((sum, a) => sum + a.income, 0);
-
-  const regionAreaIds = new Map<number, AreaId[]>();
-  for (const area of world.areas) {
-    const list = regionAreaIds.get(area.region) ?? [];
-    list.push(area.id);
-    regionAreaIds.set(area.region, list);
-  }
-
-  for (const ids of regionAreaIds.values()) {
-    const controlsAll =
-      ids.length > 0 && ids.every((id) => getAreaState(state, id).owner === power);
-    if (controlsAll) {
-      gain += Math.min(
-        ruleSet.economy.regionBonusMax,
-        ids.reduce((sum, id) => sum + getAreaState(state, id).income, 0),
-      );
-    }
-  }
-
-  return gain;
+  const areas = areasByOwner(state).get(String(power)) ?? [];
+  return areas.reduce((sum, a) => sum + a.income, 0);
 }
 
 /** Highest-scoring power that meets the winning score, or null. */
