@@ -25,12 +25,44 @@ export interface AreaState {
   readonly victoryValue: number;
 }
 
+/**
+ * A persona: the AI's priorities as a vector of weights. Each knob is an integer
+ * 0-100 with 50 as the neutral baseline. Two axes exist:
+ * - Appetite knobs bias how much a class of play is *worth* (expansion,
+ *   aggression, fortification, intelligence, corrupt, naval).
+ * - Behavior knobs shift *thresholds* rather than appetite (risk, reserves).
+ *
+ * Personas fully replace the old numeric difficulty level: a passive weighting
+ * simply produces a weaker opponent, so challenge emerges from opponent style.
+ */
+export interface PersonaKnobs {
+  /** Value of seizing neutral minors (VP + income). */
+  readonly expansion: number;
+  /** Value of attacking rival great powers (VP + income + denying the leader). */
+  readonly aggression: number;
+  /** Value of fortifying and garrisoning threatened borders. */
+  readonly fortification: number;
+  /** Propensity to spend on espionage for fresh intel. */
+  readonly intelligence: number;
+  /** Value of subversion / bribery (income only, grants no VP). */
+  readonly corrupt: number;
+  /** Attack win-probability bar: low = cautious (~75%), high = daring (~40%). */
+  readonly risk: number;
+  /** Troops held back for defense vs. committed to offense (cash is always spent). */
+  readonly reserves: number;
+  /** Bias toward overseas projection: low = continental, high = ships troops abroad. */
+  readonly naval: number;
+}
+
 /** Dynamic state of a single major power. */
 export interface PowerState {
   readonly id: PowerId;
   readonly control: ControlKind;
-  /** AI difficulty 0-9 (only meaningful when control === "ai"). */
-  readonly aiLevel: number;
+  /**
+   * The AI persona driving this power (null for human- or neutral-controlled
+   * powers). Embedded in state so a saved game restores its opponents' styles.
+   */
+  readonly persona: PersonaKnobs | null;
   readonly treasury: number;
   readonly score: number;
   /** Areas this power controlled at game start (losing them deducts points). */

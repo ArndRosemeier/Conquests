@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AIController } from "../controllers/ai/aiController.ts";
+import { knobs } from "../controllers/ai/persona.ts";
 import type { PlayerController } from "../controllers/types.ts";
 import { CLASSIC_RULESET } from "./ruleset/classic.ts";
 import { resolveCombat } from "./state/combat.ts";
@@ -19,7 +20,7 @@ import { SCENARIO_STANDARD } from "./world/scenarios.ts";
 function allAiGame(seed: number, winningScore: number): GameState {
   const controls = new Map<PowerId, PowerControlConfig>();
   for (const p of CLASSIC_RULESET.playOrder) {
-    controls.set(p, { control: "ai", aiLevel: 5 });
+    controls.set(p, { control: "ai", persona: knobs({}) });
   }
   return createGame({
     ruleSet: CLASSIC_RULESET,

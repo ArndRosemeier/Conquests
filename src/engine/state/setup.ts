@@ -7,15 +7,15 @@ import { ringArea } from "../world/geo/geometry.ts";
 import type { Area, Rating, WorldDefinition } from "../world/types.ts";
 import type { HomeLayout } from "../world/types.ts";
 import type { Scenario } from "../world/scenarios.ts";
-import type { AreaState, GameState, PowerState } from "./gameState.ts";
+import type { AreaState, GameState, PersonaKnobs, PowerState } from "./gameState.ts";
 import { declareWar } from "./helpers.ts";
 import { Rng } from "./rng.ts";
 
 /** Per-power control configuration chosen at game setup. */
 export interface PowerControlConfig {
   readonly control: ControlKind;
-  /** AI difficulty 0-9 (only used when control === "ai"). */
-  readonly aiLevel: number;
+  /** AI persona weights (only used when control === "ai"; null otherwise). */
+  readonly persona: PersonaKnobs | null;
 }
 
 export interface NewGameOptions {
@@ -260,7 +260,7 @@ export function createGame(options: NewGameOptions): GameState {
     powerStates[String(def.id)] = {
       id: def.id,
       control: cfg.control,
-      aiLevel: cfg.aiLevel,
+      persona: cfg.control === "ai" ? cfg.persona : null,
       treasury: setup.treasury,
       score: 0,
       startingAreas: controlled,

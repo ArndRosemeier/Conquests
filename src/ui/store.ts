@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { AIController } from "../controllers/ai/aiController.ts";
+import type { Persona, PersonaKnobs } from "../controllers/ai/persona.ts";
 import { HumanController } from "../controllers/humanController.ts";
 import type { PlayerController } from "../controllers/types.ts";
 import { GameRunner } from "../game/gameRunner.ts";
@@ -8,6 +9,7 @@ import type { RuleSet } from "../engine/ruleset/types.ts";
 import type { Action } from "../engine/state/actions.ts";
 import type { GameEvent } from "../engine/state/events.ts";
 import type { GameState } from "../engine/state/gameState.ts";
+import { Rng } from "../engine/state/rng.ts";
 import { createGame } from "../engine/state/setup.ts";
 import type { PowerControlConfig } from "../engine/state/setup.ts";
 import type { AreaId, PowerId } from "../engine/types.ts";
@@ -16,12 +18,48 @@ import type { WorldDefinition } from "../engine/world/types.ts";
 import { CLASSIC_HOME, getScenario } from "../engine/world/scenarios.ts";
 import { pushAutosave, putManualSave } from "./persistence.ts";
 
+/**
+ * How AI opponents get their personas: `random` shuffles the pool (seeded from
+ * the game seed for reproducibility) and deals a distinct persona to each AI;
+ * `specific` gives every AI the same chosen persona.
+ */
 export interface NewGameConfig {
   readonly scenarioId: string;
   readonly humanPower: PowerId;
-  readonly aiLevel: number;
+  readonly personaMode: "random" | "specific";
+  /** The chosen persona id when personaMode === "specific". */
+  readonly personaId: string | null;
+  /** The full persona pool (built-in + custom) to resolve/shuffle from. */
+  readonly personaPool: readonly Persona[];
   readonly winningScore: number;
   readonly seed: number;
+}
+
+/** Deal a persona to each AI power per the config (seeded, reproducible). */
+function assignPersonas(
+  config: NewGameConfig,
+  aiPowers: readonly PowerId[],
+): Map<PowerId, PersonaKnobs> {
+  const pool = config.personaPool;
+  const out = new Map<PowerId, PersonaKnobs>();
+  const fallback = pool[0]?.knobs;
+  if (fallback === undefined) return out;
+
+  if (config.personaMode === "specific") {
+    const chosen = pool.find((p) => p.id === config.personaId)?.knobs ?? fallback;
+    for (const p of aiPowers) out.set(p, chosen);
+    return out;
+  }
+
+  // Random: a seeded Fisher-Yates shuffle, then deal (cycling if fewer than AIs).
+  const rng = new Rng((config.seed ^ 0x5f3759df) >>> 0);
+  const shuffled = [...pool];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
+  }
+  aiPowers.forEach((p, i) => out.set(p, shuffled[i % shuffled.length]!.knobs));
+  return out;
 }
 
 /** Which movement the player is currently aiming (source picked, awaiting target). */
@@ -178,12 +216,15 @@ export const useGame = create<StoreState>((set, get) => {
     const world = CLASSIC_WORLD;
     const scenario = getScenario(config.scenarioId);
 
+    const aiPowers = ruleSet.playOrder.filter((p) => p !== config.humanPower);
+    const personas = assignPersonas(config, aiPowers);
+
     const controls = new Map<PowerId, PowerControlConfig>();
     for (const power of ruleSet.playOrder) {
       if (power === config.humanPower) {
-        controls.set(power, { control: "human", aiLevel: 0 });
+        controls.set(power, { control: "human", persona: null });
       } else {
-        controls.set(power, { control: "ai", aiLevel: config.aiLevel });
+        controls.set(power, { control: "ai", persona: personas.get(power) ?? null });
       }
     }
 

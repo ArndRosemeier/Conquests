@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AIController } from "../controllers/ai/aiController.ts";
+import { knobs } from "../controllers/ai/persona.ts";
 import { HumanController } from "../controllers/humanController.ts";
 import type { PlayerController } from "../controllers/types.ts";
 import { CLASSIC_RULESET, ENGLAND } from "../engine/ruleset/classic.ts";
@@ -19,10 +20,10 @@ describe("human handoff", () => {
     const controllers = new Map<PowerId, PlayerController>();
     for (const p of CLASSIC_RULESET.playOrder) {
       if (p === ENGLAND) {
-        controls.set(p, { control: "human", aiLevel: 0 });
+        controls.set(p, { control: "human", persona: null });
         controllers.set(p, human);
       } else {
-        controls.set(p, { control: "ai", aiLevel: 5 });
+        controls.set(p, { control: "ai", persona: knobs({}) });
         controllers.set(p, new AIController(CLASSIC_RULESET, CLASSIC_WORLD));
       }
     }

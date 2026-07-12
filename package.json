@@ -8,6 +8,8 @@
     "start": "vite --open",
     "dev": "vite",
     "gen:world": "vite-node scripts/generateEarth.ts",
+    "sim": "vite-node scripts/simulate.ts",
+    "exp:knob": "vite-node scripts/experimentRisk.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
