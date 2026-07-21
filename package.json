@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",
+    "@types/node": "^26.1.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/topojson-client": "^3.1.5",
