@@ -52,7 +52,7 @@ export function SetupScreen(): React.JSX.Element {
   return (
     <div className="setup">
       <div className="setup-card">
-        <h1>Colonial Conquest</h1>
+        <h1>Conquests</h1>
         <p className="subtitle">Empire building, 1880 - 1914. A modern remake.</p>
 
         <label>

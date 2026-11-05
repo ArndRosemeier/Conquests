@@ -20,11 +20,17 @@ function describe(e: GameEvent, ruleSet: RuleSet, world: WorldDefinition): strin
     case "SPY_RESULT":
       return `${pn(e.by)} spied ${an(e.area)}`;
     case "WAR_DECLARED":
-      return `${pn(e.by)} declares war on ${pn(e.against)}`;
+      return `${pn(e.by)} attacks ${pn(e.against)}: war!`;
     case "WAR_ENDED":
       return `${pn(e.by)} makes peace with ${pn(e.against)}`;
     case "PEACE_LOAN_FAILED":
       return `${pn(e.by)}'s peace offer to ${pn(e.target)} was rejected`;
+    case "POWER_ELIMINATED":
+      return `${pn(e.power)} has been eliminated`;
+    case "INCOME":
+      return `${pn(e.power)} collects $${(e.amount / 1_000_000).toFixed(1)}M`;
+    case "GAME_WON":
+      return `${pn(e.power)} wins the game`;
     default:
       return "";
   }
@@ -60,7 +66,7 @@ export function Sidebar(): React.JSX.Element | null {
                   <td>
                     <span className="dot" style={{ background: def.color }} /> {def.name}
                   </td>
-                  <td className="num">{Math.max(0, p.score)}</td>
+                  <td className="num">{p.score}</td>
                   <td className="num muted">{counts.get(String(id)) ?? 0}</td>
                 </tr>
               );

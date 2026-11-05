@@ -473,8 +473,8 @@ export function MapView(): React.JSX.Element {
         style={{ cursor: pan.isPanning ? "grabbing" : "grab" }}
       >
         <defs>
-          {/* Crosshatch marking un-conquered (neutral) territory, echoing the
-              original game's textured fills. Rendered in map units so it scales
+          {/* Crosshatch marking un-conquered (neutral) territory, giving
+              unclaimed land a textured fill. Rendered in map units so it scales
               naturally with pan/zoom. */}
           <pattern
             id="neutral-hatch"

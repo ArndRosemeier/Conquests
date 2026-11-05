@@ -147,7 +147,8 @@ export function createGame(options: NewGameOptions): GameState {
           ruleSet.victory.standardAreaValueMin,
           ruleSet.victory.standardAreaValueMax,
         );
-    const troops = seedNeutralTroops(rng, area);
+    const strength = scenario.minorStrength?.[Number(area.region)] ?? 1;
+    const troops = Math.round((seedNeutralTroops(rng, area) * strength) / 100) * 100;
     const minorDefense = MINOR_DEFENSE_FACTOR_BY_RATING[area.defense];
 
     areaStates[String(area.id)] = {
@@ -252,7 +253,7 @@ export function createGame(options: NewGameOptions): GameState {
         fleets: perAreaFleets.get(String(id)) ?? 0,
         fortified: isSupply,
         income: INCOME_BY_VALUE[area.value],
-        // Historical starting areas contribute no victory points (manual 6.5).
+        // Starting areas carry fixed values, so taking a rival's homeland pays well.
         victoryValue: HIST_VP_BY_VALUE[area.value],
       };
     }
@@ -273,18 +274,22 @@ export function createGame(options: NewGameOptions): GameState {
     war = declareWar(war, a, b);
   }
 
-  const firstPower = ruleSet.playOrder[0];
+  const firstPower = ruleSet.playOrder.find((id) => {
+    const c = powerStates[String(id)]?.control;
+    return c === "human" || c === "ai";
+  });
   if (firstPower === undefined) {
-    throw new EngineError("Ruleset has an empty play order");
+    throw new EngineError("No power is played by a human or the computer");
   }
 
   // The founding turn (year 1 spring) allows only espionage, subversion, and
-  // movement (manual 6.1.3); the season gates in legalActions enforce this.
+  // movement; the season gates in legalActions enforce this.
   return {
     rulesetId: ruleSet.id,
     worldId: world.id,
     scenarioId: scenario.id,
     year: 1,
+    startYear: scenario.startYear,
     season: "SPRING",
     stage: "PLAYER",
     activePower: firstPower,

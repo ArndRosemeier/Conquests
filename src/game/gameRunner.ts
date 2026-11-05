@@ -1,11 +1,9 @@
 import type { PlayerController } from "../controllers/types.ts";
 import type { Action } from "../engine/state/actions.ts";
-import { resolveCombat as resolveCombatFn } from "../engine/state/combat.ts";
 import type { GameEvent } from "../engine/state/events.ts";
 import type { GameState } from "../engine/state/gameState.ts";
-import { beginNextTurn } from "../engine/state/phases.ts";
 import { reduce } from "../engine/state/reducer.ts";
-import { applyAnnualEconomy, checkWinner } from "../engine/state/scoring.ts";
+import { advanceAfterCombat } from "../engine/state/turn.ts";
 import type { RuleSet } from "../engine/ruleset/types.ts";
 import { EngineError } from "../engine/types.ts";
 import type { PowerId } from "../engine/types.ts";
@@ -113,24 +111,10 @@ export class GameRunner {
   }
 
   private async resolveCombat(): Promise<void> {
-    const combat = resolveCombatFn(this.current, this.ruleSet, this.world);
-    this.set(combat.state, combat.events);
+    const result = advanceAfterCombat(this.current, this.ruleSet, this.world);
+    this.set(result.state, result.events);
     if (this.hooks.combatDelayMs) {
       await sleep(this.hooks.combatDelayMs);
-    }
-
-    let next = beginNextTurn(this.current, this.ruleSet);
-    if (next.season === "SPRING") {
-      const eco = applyAnnualEconomy(next, this.ruleSet, this.world);
-      next = eco.state;
-      this.set(next, eco.events);
-    } else {
-      this.set(next);
-    }
-
-    const winner = checkWinner(this.current);
-    if (winner !== null) {
-      this.set({ ...this.current, winner });
     }
   }
 }

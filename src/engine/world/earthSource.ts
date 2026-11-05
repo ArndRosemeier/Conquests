@@ -241,7 +241,7 @@ const EXTRA_SEEDS: readonly { readonly id: number; readonly lon: number; readonl
 ];
 
 /**
- * Cross-region land bridges and the manual's special crossings over inland
+ * Cross-region land bridges and hand-picked special crossings over inland
  * waters. Geometry supplies the rest; these guarantee historically important
  * connections the coarse coastline might otherwise miss.
  */

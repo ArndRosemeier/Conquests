@@ -2,9 +2,8 @@ import { powerId } from "../types.ts";
 import type { PowerDef, RuleSet } from "./types.ts";
 
 /**
- * Faithful reproduction of SSI Colonial Conquest (1985) balance data, taken
- * from the Major Country Comparison Chart and the rulebook. Everything is a
- * plain object so alternate rulesets can be authored without touching code.
+ * The standard balance for the six great powers. Everything is a plain object
+ * so alternate rulesets can be authored without touching code.
  */
 
 export const ENGLAND = powerId("england");
@@ -111,9 +110,10 @@ export const CLASSIC_RULESET: RuleSet = {
   economy: {
     guaranteedPeaceLoan: 8_000_000,
     minPeaceLoan: 300_000,
+    minorTroopsPerDollar: 1 / 30,
   },
   victory: {
-    options: [500, 1000, 1500, Number.POSITIVE_INFINITY],
+    options: [500, 1000, 1500, 0],
     pointsPerBattleWon: 1,
     pointsPerBattleLost: 1,
     standardAreaValueMin: 13,

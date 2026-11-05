@@ -1,4 +1,5 @@
 import type React from "react";
+import { calendarYear } from "../../engine/state/gameState.ts";
 import { getPowerState } from "../../engine/state/helpers.ts";
 import { annualIncomeFor } from "../../engine/state/scoring.ts";
 import { useGame } from "../store.ts";
@@ -26,9 +27,9 @@ export function Hud(): React.JSX.Element | null {
   return (
     <header className="hud">
       <div className="hud-left">
-        <span className="hud-title">Colonial Conquest</span>
+        <span className="hud-title">Conquests</span>
         <span className="hud-date">
-          {gameState.season} {gameState.year}
+          {gameState.season} {calendarYear(gameState)}
         </span>
       </div>
 
@@ -56,7 +57,7 @@ export function Hud(): React.JSX.Element | null {
         <span className="hud-stat" title="Income collected at the start of each year">
           Income ${(annualIncome / 1_000_000).toFixed(1)}M/yr
         </span>
-        <span className="hud-stat">Score {Math.max(0, human.score)}</span>
+        <span className="hud-stat">Score {human.score}</span>
         <button
           className="btn ghost"
           title="How combat works"

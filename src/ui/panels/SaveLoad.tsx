@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { calendarYear } from "../../engine/state/gameState.ts";
 import type React from "react";
 import {
   deleteManualSave,
@@ -53,7 +54,7 @@ export function SaveLoad(): React.JSX.Element | null {
   if (!open) return null;
 
   const canSave = gameState !== null;
-  const defaultName = gameState ? `Year ${gameState.year} ${gameState.season}` : "Save";
+  const defaultName = gameState ? `${gameState.season} ${calendarYear(gameState)}` : "Save";
 
   const doSave = async (): Promise<void> => {
     const label = (name.trim() || defaultName).slice(0, 60);
