@@ -1,7 +1,7 @@
 import { getPowerDef } from "../ruleset/classic.ts";
 import type { RuleSet } from "../ruleset/types.ts";
 import type { PowerId } from "../types.ts";
-import { effectiveness, fight } from "./combat.ts";
+import { NEUTRAL_NAVY_FACTOR, effectiveness, fight } from "./combat.ts";
 import { Rng } from "./rng.ts";
 
 /**
@@ -62,7 +62,7 @@ export function estimateBattle(
   const attNavyEff = effectiveness(ruleSet, getPowerDef(ruleSet, scenario.attacker).navyOffense);
   const navalDefEff =
     scenario.defender === null
-      ? effectiveness(ruleSet, 5)
+      ? effectiveness(ruleSet, NEUTRAL_NAVY_FACTOR)
       : effectiveness(ruleSet, getPowerDef(ruleSet, scenario.defender).navyDefense);
   const rounds = ruleSet.combat.rounds;
   const navalContested =

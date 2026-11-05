@@ -8,6 +8,7 @@ import { ART } from "../content/herald.ts";
 import { lookOf, money, powerName } from "../content/powers.ts";
 import { useGame } from "../store.ts";
 import type { AiSpeed } from "../store.ts";
+import { REFERENCE_PAGES } from "./Rulebook.tsx";
 
 function useEscape(onClose: () => void): void {
   useEffect(() => {
@@ -209,27 +210,35 @@ const GUIDE: readonly { title: string; art: string; body: readonly string[] }[] 
 export function Guide(): React.JSX.Element | null {
   const panel = useGame((s) => s.panel);
   const setPanel = useGame((s) => s.setPanel);
+  const ruleSet = useGame((s) => s.ruleSet);
   const [page, setPage] = useState(0);
   const close = (): void => setPanel("none");
   useEscape(close);
   if (panel !== "guide") return null;
-  const p = GUIDE[page]!;
+  const total = GUIDE.length + REFERENCE_PAGES.length;
+  const story = page < GUIDE.length ? GUIDE[page]! : null;
+  const ref = story === null ? REFERENCE_PAGES[page - GUIDE.length]! : null;
+  const tab = (title: string, i: number): React.JSX.Element => (
+    <button key={title} className={i === page ? "on" : ""} onClick={() => setPage(i)}>{title}</button>
+  );
   return (
     <div className="overlay" onClick={close}>
-      <div className="modal glass guide-modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal glass guide-modal${ref ? " ref" : ""}`} onClick={(e) => e.stopPropagation()}>
         <button className="close" aria-label="Close" onClick={close}>×</button>
-        <img src={p.art} alt="" className="guide-art" key={p.art} />
+        {story && <img src={story.art} alt="" className="guide-art" key={story.art} />}
         <div className="guide-body">
           <nav className="guide-tabs">
-            {GUIDE.map((g, i) => (
-              <button key={g.title} className={i === page ? "on" : ""} onClick={() => setPage(i)}>{g.title}</button>
-            ))}
+            {GUIDE.map((g, i) => tab(g.title, i))}
+            <span className="guide-tabs-label">Rules reference</span>
+            {REFERENCE_PAGES.map((r, i) => tab(r.title, GUIDE.length + i))}
           </nav>
-          <h2>{p.title}</h2>
-          {p.body.map((b, i) => <p key={i}>{b}</p>)}
+          <h2>{story ? story.title : ref!.title}</h2>
+          <div className={ref ? "ref-content" : undefined}>
+            {story ? story.body.map((b, i) => <p key={i}>{b}</p>) : ref!.render(ruleSet)}
+          </div>
           <div className="guide-nav">
             <button className="btn ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>Back</button>
-            {page < GUIDE.length - 1 ? (
+            {page < total - 1 ? (
               <button className="btn primary" onClick={() => setPage(page + 1)}>Next</button>
             ) : (
               <button className="btn primary" onClick={close}>Got it</button>
