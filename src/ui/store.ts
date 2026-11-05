@@ -276,12 +276,17 @@ export const useGame = create<StoreState>((set, get) => {
             const other = e.by === me ? e.against : e.by;
             toast({ title: `War with ${pn(other)}!`, body: e.by === me ? "Your attack started a war." : `${pn(e.by)} attacked you.`, tone: "war" });
             sound.play("drums", 0.8);
+          } else {
+            // Wars between other nations change the map too: tell the player.
+            toast({ title: `${pn(e.by)} declares war on ${pn(e.against)}`, tone: "war" });
+            sound.play("drums", 0.5);
           }
           logLine(gs, `${pn(e.by)} attacked ${pn(e.against)}: war`, "war");
           break;
         case "WAR_ENDED":
           logLine(gs, `${pn(e.by)} bought peace with ${pn(e.against)}`, "info");
           if (e.by === me || e.against === me) toast({ title: "Peace!", body: `The war between ${pn(e.by)} and ${pn(e.against)} is over.`, tone: "good" });
+          else toast({ title: `${pn(e.by)} and ${pn(e.against)} make peace`, body: `${pn(e.by)} paid for the peace.`, tone: "info" });
           break;
         case "PEACE_LOAN_FAILED":
           if (e.by === me) toast({ title: "Peace offer refused", body: `${pn(e.target)} kept the money and the war.`, tone: "bad" });
