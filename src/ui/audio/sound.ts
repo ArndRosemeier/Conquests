@@ -1,7 +1,6 @@
 /**
- * Music, sound effects and the herald's voice. Music streams through one
- * <audio> element per mood (cross-faded); effects and voice lines are short
- * clips played through cached elements. Browsers block sound until the first
+ * Music and sound effects. Music streams through one <audio> element per
+ * mood (cross-faded); effects are short clips played through cached elements. Browsers block sound until the first
  * user gesture, so nothing plays before `unlock()` has run once.
  */
 
@@ -20,17 +19,15 @@ export type Sfx =
   | "bell"
   | "click"
   | "build";
-export type Voice = "welcome" | "yourturn" | "war" | "victory" | "defeat" | "newyear";
 
 export interface AudioSettings {
   music: number;
   sfx: number;
-  voice: number;
   muted: boolean;
 }
 
 const KEY = "conquests.audio";
-const DEFAULTS: AudioSettings = { music: 0.55, sfx: 0.7, voice: 0.8, muted: false };
+const DEFAULTS: AudioSettings = { music: 0.55, sfx: 0.7, muted: false };
 
 const BASE = import.meta.env.BASE_URL;
 const MUSIC: Record<Exclude<Mood, "none">, readonly string[]> = {
@@ -165,10 +162,6 @@ class SoundSystem {
 
   play(effect: Sfx, gain = 1): void {
     this.clip(`audio/sfx/${effect}.mp3`, this.settings.sfx * gain, effect === "click" ? 40 : 120);
-  }
-
-  say(line: Voice): void {
-    this.clip(`audio/vo/${line}.mp3`, this.settings.voice, 1500);
   }
 }
 

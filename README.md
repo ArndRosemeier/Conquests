@@ -82,8 +82,8 @@ How it works (`src/net/`):
   - `map/` a canvas renderer with pan, zoom, pinch, fling and animated battles, captures and spies.
   - `game/` the HUD, the race standings, the orders panel, the World Herald newspaper, the guide and
     settings.
-  - `audio/` music by mood with cross-fades, sound effects and voice lines.
-- `public/art` and `public/audio` hold paintings, crests, music, effects and voice lines, all generated
+  - `audio/` music by mood with cross-fades and sound effects. No spoken lines, by design.
+- `public/art` and `public/audio` hold paintings, crests, music and effects, all generated
   with models on OpenRouter. `docs/ASSETS.md` lists the models and prompts; the game needs no key or
   network at run time.
 

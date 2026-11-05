@@ -275,7 +275,7 @@ export const useGame = create<StoreState>((set, get) => {
           if (e.by === me || e.against === me) {
             const other = e.by === me ? e.against : e.by;
             toast({ title: `War with ${pn(other)}!`, body: e.by === me ? "Your attack started a war." : `${pn(e.by)} attacked you.`, tone: "war" });
-            sound.say("war");
+            sound.play("drums", 0.8);
           }
           logLine(gs, `${pn(e.by)} attacked ${pn(e.against)}: war`, "war");
           break;
@@ -319,7 +319,6 @@ export const useGame = create<StoreState>((set, get) => {
           break;
         case "GAME_WON":
           sound.setMood(e.power === me ? "victory" : "defeat");
-          sound.say(e.power === me ? "victory" : "defeat");
           break;
       }
     }
@@ -334,12 +333,12 @@ export const useGame = create<StoreState>((set, get) => {
   /** React to the state moving on: season banners, the yearly newspaper, music. */
   const onState = (gs: GameState): void => {
     const me = get().humanPower;
-    // Online, say when it is the player's turn: they may have been looking elsewhere.
+    // Online, ring a bell when it is the player's turn: they may have been looking elsewhere.
     if (get().mode !== "local" && me !== null && gs.stage === "PLAYER" && gs.activePower === me && gs.winner === null) {
       const key = `${gs.year}-${gs.season}`;
       if (key !== lastTurnCall) {
         lastTurnCall = key;
-        sound.say("yourturn");
+        sound.play("bell", 0.7);
       }
     }
     const bannerKey = `${gs.year}-${gs.season}`;
@@ -600,7 +599,6 @@ export const useGame = create<StoreState>((set, get) => {
       });
       autosaveKey = null;
       launch(initial);
-      sound.say("welcome");
     },
 
     loadGame: (state) => {
@@ -783,7 +781,6 @@ export const useGame = create<StoreState>((set, get) => {
       });
       net.start(initial);
       launch(initial, "host");
-      sound.say("welcome");
     },
   };
 });
