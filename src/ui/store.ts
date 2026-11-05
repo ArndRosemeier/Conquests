@@ -68,6 +68,8 @@ export type Mode = "local" | "host" | "client";
 export type MoveMode = "army" | "fleet";
 export type Panel = "none" | "guide" | "settings" | "saves" | "menu";
 export type AiSpeed = "relaxed" | "normal" | "fast";
+/** How the world is shown in a game: the flat map or the turning globe. */
+export type MapView = "flat" | "globe";
 
 /** A visual effect for the map to play once. */
 export type Fx =
@@ -125,6 +127,7 @@ interface StoreState {
   readonly focus: { readonly area: AreaId; readonly n: number } | null;
   readonly panel: Panel;
   readonly aiSpeed: AiSpeed;
+  readonly mapView: MapView;
   readonly canUndo: boolean;
   readonly spectating: boolean;
   readonly mode: Mode;
@@ -146,6 +149,7 @@ interface StoreState {
   closeHerald: () => void;
   setPanel: (panel: Panel) => void;
   setAiSpeed: (speed: AiSpeed) => void;
+  setMapView: (view: MapView) => void;
   consumeFx: (ids: readonly number[]) => void;
   spectate: () => void;
   goOnline: () => void;
@@ -195,6 +199,15 @@ function loadSpeed(): AiSpeed {
     /* default */
   }
   return "normal";
+}
+
+const VIEW_KEY = "conquests.mapView";
+function loadView(): MapView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "globe" ? "globe" : "flat";
+  } catch {
+    return "flat";
+  }
 }
 
 const MAX_LOG = 80;
@@ -568,6 +581,7 @@ export const useGame = create<StoreState>((set, get) => {
     focus: null,
     panel: "none",
     aiSpeed: loadSpeed(),
+    mapView: loadView(),
     canUndo: false,
     spectating: false,
     mode: "local",
@@ -749,6 +763,15 @@ export const useGame = create<StoreState>((set, get) => {
       const pace = PACING[speed];
       runner?.setPacing(pace.ai, pace.combat);
       set({ aiSpeed: speed });
+    },
+
+    setMapView: (view) => {
+      try {
+        localStorage.setItem(VIEW_KEY, view);
+      } catch {
+        /* not persisted */
+      }
+      set({ mapView: view });
     },
 
     consumeFx: (ids) => set((s) => ({ fx: s.fx.filter((f) => !ids.includes(f.id)) })),

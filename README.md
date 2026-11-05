@@ -9,7 +9,7 @@ armies, fleets, fortresses, spies, bribes and loans. The first power to reach th
 | | |
 | --- | --- |
 | ![New campaign](docs/screenshots/new-campaign.webp) | ![Giving orders](docs/screenshots/orders.webp) |
-| ![The World Herald](docs/screenshots/herald.webp) | |
+| ![The World Herald](docs/screenshots/herald.webp) | ![Battles on the globe](docs/screenshots/globe.webp) |
 
 ## Quick start
 
@@ -80,6 +80,8 @@ How it works (`src/net/`):
   - `newgame/` nation, scenario, game length and rival personalities, plus the persona editor and
     crash tester.
   - `map/` a canvas renderer with pan, zoom, pinch, fling and animated battles, captures and spies.
+    `globeView.ts` wraps that same map around a three.js globe (Settings → World view, or the 🌐
+    button): drag to turn it, scroll to zoom, and battles swing the globe round and fly in as arcs.
   - `game/` the HUD, the race standings, the orders panel, the World Herald newspaper, the guide and
     settings.
   - `audio/` music by mood with cross-fades and sound effects. No spoken lines, by design.

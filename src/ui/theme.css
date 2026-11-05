@@ -550,3 +550,7 @@ select { cursor: pointer; }
 .room-chip { font: 700 13px/1 var(--display); letter-spacing: .2em; color: var(--brass-2); }
 .player-name { color: var(--text-dim); font-weight: 400; font-size: 11.5px; }
 @media (max-width: 900px) { .online-grid { grid-template-columns: 1fr; } .seat-grid { grid-template-columns: 1fr; } }
+
+/* Globe view: deep space behind the turning world. */
+.map.globe-view { cursor: grab; }
+.globe-space { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 55%, #10213d 0%, #070d1c 55%, #03060e 100%); }
