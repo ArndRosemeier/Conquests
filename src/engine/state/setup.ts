@@ -29,13 +29,13 @@ export interface NewGameOptions {
 }
 
 // Region income spans $500k..$2.5m in $100k steps, matching the original game.
-const INCOME_MIN = 500_000;
-const INCOME_STEP = 100_000;
-const INCOME_MAX_STEPS = 20; // (2_500_000 - 500_000) / 100_000
+export const INCOME_MIN = 500_000;
+export const INCOME_STEP = 100_000;
+export const INCOME_MAX_STEPS = 20; // (2_500_000 - 500_000) / 100_000
 /** Exponent skewing income toward the low end (>1, softer than quadratic's 2). */
-const INCOME_SKEW = 1.7;
+export const INCOME_SKEW = 1.7;
 
-const INCOME_BY_VALUE: Readonly<Record<Rating, number>> = {
+export const INCOME_BY_VALUE: Readonly<Record<Rating, number>> = {
   A: 2_500_000,
   B: 1_600_000,
   C: 1_000_000,
@@ -51,14 +51,14 @@ function rollIncome(rng: Rng): number {
   return INCOME_MIN + steps * INCOME_STEP;
 }
 
-const HIST_VP_BY_VALUE: Readonly<Record<Rating, number>> = {
+export const HIST_VP_BY_VALUE: Readonly<Record<Rating, number>> = {
   A: 45,
   B: 35,
   C: 25,
   D: 15,
 };
 
-const MINOR_DEFENSE_FACTOR_BY_RATING: Readonly<Record<Rating, number>> = {
+export const MINOR_DEFENSE_FACTOR_BY_RATING: Readonly<Record<Rating, number>> = {
   A: 2,
   B: 3,
   C: 4,
@@ -66,7 +66,7 @@ const MINOR_DEFENSE_FACTOR_BY_RATING: Readonly<Record<Rating, number>> = {
 };
 
 /** Garrison multiplier by defensive rating; strong minors field bigger armies. */
-const MINOR_TROOP_MULT_BY_DEFENSE: Readonly<Record<Rating, number>> = {
+export const MINOR_TROOP_MULT_BY_DEFENSE: Readonly<Record<Rating, number>> = {
   A: 1.35,
   B: 1.12,
   C: 0.95,

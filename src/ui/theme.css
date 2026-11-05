@@ -160,6 +160,30 @@ select { cursor: pointer; }
 .guide-tabs button { border: 0; background: rgba(255,255,255,.05); color: var(--text-dim); padding: 5px 10px; border-radius: 99px; font-size: 12px; cursor: pointer; }
 .guide-tabs button.on { background: var(--brass); color: #23170a; }
 .guide-nav { margin-top: auto; display: flex; justify-content: space-between; padding-top: 12px; }
+/* Rules reference pages: full width, scrollable, built from the ruleset. */
+.guide-modal.ref { width: min(980px, 100%); grid-template-columns: 1fr; }
+.guide-modal.ref .guide-body { max-height: min(86vh, 900px); }
+.guide-tabs-label { flex-basis: 100%; margin: 6px 0 0; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--brass-dim); }
+.ref-content { overflow-y: auto; min-height: 0; flex: 1; padding-right: 6px; }
+.ref-content h3 { margin: 18px 0 8px; font-size: 15px; color: var(--brass-2); }
+.ref-content > h3:first-child { margin-top: 0; }
+.ref-content p, .ref-content li { font-size: 14px; line-height: 1.55; }
+.ref-content ul { margin: 0 0 10px; padding-left: 20px; color: var(--text); }
+.ref-content li { margin-bottom: 4px; }
+.formula { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 13px; background: rgba(214,178,107,.08); border-left: 3px solid var(--brass-dim); padding: 7px 10px; margin: 6px 0; border-radius: 4px; color: var(--text); overflow-wrap: anywhere; }
+.ref-scroll { overflow-x: auto; margin: 6px 0 10px; }
+.ref-table { border-collapse: collapse; width: 100%; font-size: 13.5px; white-space: nowrap; }
+.ref-table th, .ref-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.08); }
+.ref-table th { color: var(--text-dim); font-weight: 600; font-size: 12px; }
+.ref-table.compact { width: auto; }
+.ref-table .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.odds-calc { margin-top: 18px; padding: 14px 16px; border: 1px solid rgba(214,178,107,.25); border-radius: 10px; background: rgba(255,255,255,.03); }
+.odds-calc h3 { margin-top: 0; }
+.odds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 14px; margin: 8px 0 12px; }
+.odds-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-dim); }
+.odds-grid label.check { flex-direction: row; align-items: center; gap: 8px; margin: 0; }
+.odds-result { font-size: 14.5px; }
+.odds-result b { font-size: 20px; color: var(--brass-2); }
 
 /* The World Herald */
 .paper {

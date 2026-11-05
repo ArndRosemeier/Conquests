@@ -35,6 +35,18 @@ export interface BattleResult {
   readonly defenderSurvivors: number;
 }
 
+/**
+ * Per-round battle constants. Each side's round strength is rolled between
+ * LUCK_MIN and LUCK_MIN + LUCK_SPREAD of its nominal value, and each side loses
+ * up to LOSS_RATE of its units per round (scaled by the enemy's share of the
+ * total strength). Exported so the in-game rules reference shows real numbers.
+ */
+export const BATTLE_LUCK_MIN = 0.8;
+export const BATTLE_LUCK_SPREAD = 0.4;
+export const BATTLE_LOSS_RATE = 0.5;
+/** Naval defense factor of a neutral harbour (worst on the scale). */
+export const NEUTRAL_NAVY_FACTOR = 5;
+
 /** Attrition battle over up to N rounds; decisive by comparing effective power. */
 export function fight(
   attackers: number,
@@ -48,11 +60,11 @@ export function fight(
   let d = defenders;
   for (let r = 0; r < rounds; r += 1) {
     if (a <= 0 || d <= 0) break;
-    const aStrength = a * attEff * (0.8 + 0.4 * rng.next());
-    const dStrength = d * defEff * (0.8 + 0.4 * rng.next());
+    const aStrength = a * attEff * (BATTLE_LUCK_MIN + BATTLE_LUCK_SPREAD * rng.next());
+    const dStrength = d * defEff * (BATTLE_LUCK_MIN + BATTLE_LUCK_SPREAD * rng.next());
     const total = aStrength + dStrength || 1;
-    const aLoss = Math.round(a * (dStrength / total) * 0.5);
-    const dLoss = Math.round(d * (aStrength / total) * 0.5);
+    const aLoss = Math.round(a * (dStrength / total) * BATTLE_LOSS_RATE);
+    const dLoss = Math.round(d * (aStrength / total) * BATTLE_LOSS_RATE);
     a = Math.max(0, a - aLoss);
     d = Math.max(0, d - dLoss);
   }
@@ -242,7 +254,7 @@ function resolveSeaAssault(state: GameState, move: PendingMove, ctx: Ctx): GameS
   let survivingFleets = move.fleets;
   if (move.fleets > 0 || dest.fleets > 0) {
     const navalDefEff =
-      defenderOwner === null ? effectiveness(ctx.ruleSet, 5) : navyEff(ctx, defenderOwner, false);
+      defenderOwner === null ? effectiveness(ctx.ruleSet, NEUTRAL_NAVY_FACTOR) : navyEff(ctx, defenderOwner, false);
     const naval = fight(
       move.fleets,
       navyEff(ctx, move.power, true),
