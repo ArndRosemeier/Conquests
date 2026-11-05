@@ -4,6 +4,13 @@ Grand strategy of rival empires, 1880 to 1914, in the browser. Lead one of six g
 Germany, France, the USA, Japan or Russia) and race the others for the world's 131 territories with
 armies, fleets, fortresses, spies, bribes and loans. The first power to reach the winning score wins.
 
+![Title screen](docs/screenshots/title.webp)
+
+| | |
+| --- | --- |
+| ![New campaign](docs/screenshots/new-campaign.webp) | ![Giving orders](docs/screenshots/orders.webp) |
+| ![The World Herald](docs/screenshots/herald.webp) | |
+
 ## Quick start
 
 ```bash
