@@ -47,7 +47,18 @@ npm run gen:world  # regenerate the precomputed world map
     victory check).
 - `src/controllers/` has interchangeable human and AI players (`PlayerController`).
 - `src/game/gameRunner.ts` asks each power's controller for actions and drives the turn loop.
-- `src/ui/` is the React front end.
+- `src/ui/` is the React front end:
+  - `title/` the title screen: a three.js globe on which a real all-AI game plays itself, Ken Burns
+    paintings, an animated logo and a World Herald ticker (try the Konami code).
+  - `newgame/` nation, scenario, game length and rival personalities, plus the persona editor and
+    crash tester.
+  - `map/` a canvas renderer with pan, zoom, pinch, fling and animated battles, captures and spies.
+  - `game/` the HUD, the race standings, the orders panel, the World Herald newspaper, the guide and
+    settings.
+  - `audio/` music by mood with cross-fades, sound effects and voice lines.
+- `public/art` and `public/audio` hold paintings, crests, music, effects and voice lines, all generated
+  with models on OpenRouter. `docs/ASSETS.md` lists the models and prompts; the game needs no key or
+  network at run time.
 
 The engine is deterministic: the same seed and actions give the same game, and illegal actions throw
 instead of being ignored.

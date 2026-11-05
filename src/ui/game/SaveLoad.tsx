@@ -22,8 +22,9 @@ function timeAgo(ts: number): string {
 }
 
 export function SaveLoad(): React.JSX.Element | null {
-  const open = useGame((s) => s.saveLoadOpen);
-  const setOpen = useGame((s) => s.setSaveLoadOpen);
+  const open = useGame((s) => s.panel === "saves");
+  const setPanel = useGame((s) => s.setPanel);
+  const setOpen = useCallback((v: boolean): void => setPanel(v ? "saves" : "none"), [setPanel]);
   const gameState = useGame((s) => s.gameState);
   const saveGame = useGame((s) => s.saveGame);
   const loadGame = useGame((s) => s.loadGame);
@@ -104,11 +105,11 @@ export function SaveLoad(): React.JSX.Element | null {
   };
 
   return (
-    <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div className="modal save-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="overlay" onClick={() => setOpen(false)}>
+      <div className="modal glass save-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h2>Save &amp; Load</h2>
-          <button className="popup-x" aria-label="Close" onClick={() => setOpen(false)}>
+          <button className="close" aria-label="Close" onClick={() => setOpen(false)}>
             {"\u00d7"}
           </button>
         </div>
@@ -149,7 +150,7 @@ export function SaveLoad(): React.JSX.Element | null {
                     <div className="save-meta">
                       <span className="save-name">{s.label}</span>
                       <span className="muted small">
-                        Year {s.year} {"\u00b7"} {s.season} {"\u00b7"} {timeAgo(s.savedAt)}
+                        {timeAgo(s.savedAt)}
                       </span>
                     </div>
                     <div className="save-actions">

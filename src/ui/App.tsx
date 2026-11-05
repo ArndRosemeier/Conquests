@@ -1,57 +1,34 @@
+import { useEffect } from "react";
 import type React from "react";
-import { MapView } from "./map/MapView.tsx";
-import { AreaActions } from "./panels/AreaActions.tsx";
-import { CombatInfo } from "./panels/CombatInfo.tsx";
-import { Hud } from "./panels/Hud.tsx";
-import { SaveLoad } from "./panels/SaveLoad.tsx";
-import { Sidebar } from "./panels/Sidebar.tsx";
-import { SetupScreen } from "./SetupScreen.tsx";
+import { sound } from "./audio/sound.ts";
+import { GameScreen } from "./game/GameScreen.tsx";
+import { Guide, Settings } from "./game/Overlays.tsx";
+import { SaveLoad } from "./game/SaveLoad.tsx";
+import { NewGameScreen } from "./newgame/NewGameScreen.tsx";
 import { useGame } from "./store.ts";
-
-function VictoryBanner(): React.JSX.Element | null {
-  const gameState = useGame((s) => s.gameState);
-  const ruleSet = useGame((s) => s.ruleSet);
-  const newGame = useGame((s) => s.newGame);
-  if (gameState === null || gameState.winner === null) return null;
-  const w = ruleSet.powers.find((p) => p.id === gameState.winner);
-  return (
-    <div className="victory-banner">
-      <div className="victory-card">
-        <h2>Victory</h2>
-        <p style={{ color: w?.color }}>
-          <strong>{w?.name}</strong> has won the game!
-        </p>
-        <button className="btn primary" onClick={newGame}>
-          New Game
-        </button>
-      </div>
-    </div>
-  );
-}
+import { TitleScreen } from "./title/TitleScreen.tsx";
 
 export function App(): React.JSX.Element {
   const screen = useGame((s) => s.screen);
 
-  if (screen === "setup") {
-    return (
-      <>
-        <SetupScreen />
-        <SaveLoad />
-      </>
-    );
-  }
+  // Browsers only allow sound after a user gesture.
+  useEffect(() => {
+    const unlock = (): void => sound.unlock();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
 
+  if (screen === "game") return <GameScreen />;
   return (
-    <div className="game">
-      <Hud />
-      <div className="game-body">
-        <MapView />
-        <Sidebar />
-      </div>
-      <AreaActions />
-      <CombatInfo />
+    <>
+      {screen === "title" ? <TitleScreen /> : <NewGameScreen />}
       <SaveLoad />
-      <VictoryBanner />
-    </div>
+      <Guide />
+      <Settings />
+    </>
   );
 }

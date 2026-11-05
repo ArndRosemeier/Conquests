@@ -23,6 +23,7 @@
     "polygon-clipping": "^0.15.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "three": "^0.170.0",
     "topojson-client": "^3.1.0",
     "world-atlas": "^2.0.2",
     "zustand": "^4.5.5"
@@ -32,6 +33,7 @@
     "@types/node": "^26.1.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.170.0",
     "@types/topojson-client": "^3.1.5",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",

@@ -17,7 +17,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: ENGLAND,
     name: "England",
-    color: "#8e44ad",
+    color: "#8a5cc8",
     armyOffense: 1,
     armyDefense: 1,
     armyCostPer10k: 600_000,
@@ -28,7 +28,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: GERMANY,
     name: "Germany",
-    color: "#7f8c8d",
+    color: "#9aa3ad",
     armyOffense: 3,
     armyDefense: 2,
     armyCostPer10k: 400_000,
@@ -39,7 +39,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: FRANCE,
     name: "France",
-    color: "#27ae60",
+    color: "#2fa866",
     armyOffense: 2,
     armyDefense: 2,
     armyCostPer10k: 300_000,
@@ -50,7 +50,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: USA,
     name: "USA",
-    color: "#5dade2",
+    color: "#4f9ee6",
     armyOffense: 2,
     armyDefense: 2,
     armyCostPer10k: 300_000,
@@ -61,7 +61,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: JAPAN,
     name: "Japan",
-    color: "#f1c40f",
+    color: "#e7b93c",
     armyOffense: 4,
     armyDefense: 3,
     armyCostPer10k: 300_000,
@@ -72,7 +72,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: RUSSIA,
     name: "Russia",
-    color: "#c0392b",
+    color: "#cf4632",
     armyOffense: 4,
     armyDefense: 3,
     armyCostPer10k: 200_000,
