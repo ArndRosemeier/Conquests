@@ -120,24 +120,127 @@ function ensureWar(state: GameState, attacker: PowerId, defender: PowerId | null
   // Only powers actually go to war; neutral-controlled majors act like minors.
   if (defState.control === "neutral") return state;
   if ((state.war[String(defender)] ?? []).includes(attacker)) return state;
-  ctx.events.push({ type: "WAR_DECLARED", by: defender, against: attacker });
+  ctx.events.push({ type: "WAR_DECLARED", by: attacker, against: defender });
   return { ...state, war: declareWar(state.war, attacker, defender) };
 }
 
-/** Resolve a single attack (naval or land) against its destination. */
-function resolveAttack(state: GameState, move: PendingMove, ctx: Ctx): GameState {
+/** Return each wave's share of the survivors to the area it came from (if still held). */
+function returnSurvivorsHome(
+  state: GameState,
+  power: PowerId,
+  legs: readonly PendingMove[],
+  survivors: number,
+): GameState {
+  const sent = legs.reduce((sum, m) => sum + m.troops, 0);
+  if (sent <= 0 || survivors <= 0) return state;
+  let next = state;
+  let left = survivors;
+  legs.forEach((leg, i) => {
+    const share = i === legs.length - 1 ? left : Math.floor((survivors * leg.troops) / sent);
+    left -= share;
+    next = returnTroopsHome(next, power, leg.from, share);
+  });
+  return next;
+}
+
+function landDefense(ctx: Ctx, target: AreaState, terrain: number): number {
+  return (
+    defenderArmyEff(ctx, target) *
+    terrainMultiplier(ctx.ruleSet, terrain) *
+    (target.fortified ? ctx.ruleSet.combat.fortificationDefenseMultiplier : 1)
+  );
+}
+
+/** Winner takes the area: control changes and battle points are booked. */
+function occupy(
+  state: GameState,
+  ctx: Ctx,
+  power: PowerId,
+  area: AreaId,
+  defenderOwner: PowerId | null,
+  troops: number,
+  fleets: number,
+): GameState {
+  let next = withArea(state, {
+    ...getAreaState(state, area),
+    troops: Math.max(troops, 1),
+    fleets,
+    fortified: false,
+  });
+  const changed = changeControl(next, area, power, true);
+  next = changed.state;
+  ctx.events.push(...changed.events);
+  next = addBattlePoints(next, power, ctx.ruleSet.victory.pointsPerBattleWon);
+  if (defenderOwner !== null) {
+    next = addBattlePoints(next, defenderOwner, -ctx.ruleSet.victory.pointsPerBattleLost);
+  }
+  return next;
+}
+
+function repelled(state: GameState, ctx: Ctx, power: PowerId, defenderOwner: PowerId | null): GameState {
+  let next = addBattlePoints(state, power, -ctx.ruleSet.victory.pointsPerBattleLost);
+  if (defenderOwner !== null) {
+    next = addBattlePoints(next, defenderOwner, ctx.ruleSet.victory.pointsPerBattleWon);
+  }
+  return next;
+}
+
+/**
+ * Resolve one land assault. Every army a power marched into the same area this
+ * turn fights as a single combined force, so attacking from two sides adds up
+ * instead of being fed in piecemeal.
+ */
+function resolveLandAssault(state: GameState, legs: readonly PendingMove[], ctx: Ctx): GameState {
+  const first = legs[0]!;
+  const power = first.power;
+  const to = first.to;
+  const target = getAreaState(state, to);
+  const defenderOwner = target.owner;
+  const troops = legs.reduce((sum, m) => sum + m.troops, 0);
+  const terrain = getArea(ctx.world, to).terrain;
+
+  const battle = fight(
+    troops,
+    armyEff(ctx, power, true),
+    target.troops,
+    landDefense(ctx, target, terrain),
+    ctx.ruleSet.combat.rounds,
+    ctx.rng,
+  );
+  let next = ensureWar(state, power, defenderOwner, ctx);
+  if (battle.attackerWon) {
+    next = occupy(next, ctx, power, to, defenderOwner, battle.attackerSurvivors, target.fleets);
+  } else {
+    next = withArea(next, { ...getAreaState(next, to), troops: Math.max(battle.defenderSurvivors, 1) });
+    next = returnSurvivorsHome(next, power, legs, battle.attackerSurvivors);
+    next = repelled(next, ctx, power, defenderOwner);
+  }
+  ctx.events.push({
+    type: "BATTLE",
+    area: to,
+    attacker: power,
+    defender: defenderOwner,
+    attackerWon: battle.attackerWon,
+    attackerLosses: troops - battle.attackerSurvivors,
+    defenderLosses: target.troops - battle.defenderSurvivors,
+    from: legs.map((m) => m.from),
+    bySea: false,
+  });
+  return next;
+}
+
+/** Resolve one seaborne assault: a fleet battle first, then any landing. */
+function resolveSeaAssault(state: GameState, move: PendingMove, ctx: Ctx): GameState {
   let next = state;
   const dest = getAreaState(next, move.to);
   const defenderOwner = dest.owner;
   const fromArea = getArea(ctx.world, move.from);
   const toArea = getArea(ctx.world, move.to);
   const crossRegion = fromArea.region !== toArea.region;
+  const battleBase = { type: "BATTLE" as const, area: move.to, attacker: move.power, defender: defenderOwner, from: [move.from], bySea: true };
 
-  let landingTroops = move.troops;
   let survivingFleets = move.fleets;
-
-  // Naval leg: fleet-vs-fleet before any troops can land.
-  if (move.bySea && (move.fleets > 0 || dest.fleets > 0)) {
+  if (move.fleets > 0 || dest.fleets > 0) {
     const navalDefEff =
       defenderOwner === null ? effectiveness(ctx.ruleSet, 5) : navyEff(ctx, defenderOwner, false);
     const naval = fight(
@@ -149,38 +252,28 @@ function resolveAttack(state: GameState, move: PendingMove, ctx: Ctx): GameState
       ctx.rng,
     );
     survivingFleets = naval.attackerSurvivors;
+    next = ensureWar(next, move.power, defenderOwner, ctx);
 
     if (!naval.attackerWon) {
-      // Assault repelled at sea: fleets retreat home, troops lost unless same region.
-      next = withArea(next, { ...dest, fleets: naval.defenderSurvivors });
+      // Repelled at sea: fleets limp home; troops drown unless home is close by.
+      next = withArea(next, { ...getAreaState(next, move.to), fleets: naval.defenderSurvivors });
       next = returnFleetsHome(next, move.power, move.from, survivingFleets);
-      if (!crossRegion) {
-        next = returnTroopsHome(next, move.power, move.from, landingTroops);
-      }
-      next = ensureWar(next, move.power, defenderOwner, ctx);
+      if (!crossRegion) next = returnTroopsHome(next, move.power, move.from, move.troops);
+      next = repelled(next, ctx, move.power, defenderOwner);
       ctx.events.push({
-        type: "BATTLE",
-        area: move.to,
-        attacker: move.power,
-        defender: defenderOwner,
+        ...battleBase,
         attackerWon: false,
-        attackerLosses: move.troops + (move.fleets - survivingFleets),
+        attackerLosses: (crossRegion ? move.troops : 0) + (move.fleets - survivingFleets),
         defenderLosses: dest.fleets - naval.defenderSurvivors,
       });
       return next;
     }
-
-    // Seas won: defender fleets destroyed/retreated, troops proceed to land.
     next = withArea(next, { ...getAreaState(next, move.to), fleets: 0 });
-    if (landingTroops === 0) {
-      // Pure sortie: fleets return home after clearing the seas.
+    if (move.troops === 0) {
+      // A pure sortie clears the harbour and sails home.
       next = returnFleetsHome(next, move.power, move.from, survivingFleets);
-      next = ensureWar(next, move.power, defenderOwner, ctx);
       ctx.events.push({
-        type: "BATTLE",
-        area: move.to,
-        attacker: move.power,
-        defender: defenderOwner,
+        ...battleBase,
         attackerWon: true,
         attackerLosses: move.fleets - survivingFleets,
         defenderLosses: dest.fleets,
@@ -189,66 +282,35 @@ function resolveAttack(state: GameState, move: PendingMove, ctx: Ctx): GameState
     }
   }
 
-  // Land battle for the area's garrison.
   const target = getAreaState(next, move.to);
   const battle = fight(
-    landingTroops,
+    move.troops,
     armyEff(ctx, move.power, true),
     target.troops,
-    defenderArmyEff(ctx, target) *
-      terrainMultiplier(ctx.ruleSet, toArea.terrain) *
-      (target.fortified ? ctx.ruleSet.combat.fortificationDefenseMultiplier : 1),
+    landDefense(ctx, target, toArea.terrain),
     ctx.ruleSet.combat.rounds,
     ctx.rng,
   );
-
   next = ensureWar(next, move.power, defenderOwner, ctx);
-
   if (battle.attackerWon) {
-    // Occupy: attacker becomes the new controller and defender.
-    const occupied: AreaState = {
-      ...getAreaState(next, move.to),
-      troops: Math.max(battle.attackerSurvivors, 1),
-      fleets: survivingFleets,
-      fortified: false,
-    };
-    next = withArea(next, occupied);
-    const changed = changeControl(next, move.to, move.power, true);
-    next = changed.state;
-    ctx.events.push(...changed.events);
-    next = addBattlePoints(next, move.power, ctx.ruleSet.victory.pointsPerBattleWon);
-    if (defenderOwner !== null) {
-      next = addBattlePoints(next, defenderOwner, -ctx.ruleSet.victory.pointsPerBattleLost);
-    }
+    next = occupy(next, ctx, move.power, move.to, defenderOwner, battle.attackerSurvivors, survivingFleets);
   } else {
-    // Repelled: defender holds with survivors; attackers retreat or die.
     next = withArea(next, { ...getAreaState(next, move.to), troops: Math.max(battle.defenderSurvivors, 1) });
-    if (!crossRegion || !move.bySea) {
-      next = returnTroopsHome(next, move.power, move.from, battle.attackerSurvivors);
-    }
-    if (move.bySea) {
-      next = returnFleetsHome(next, move.power, move.from, survivingFleets);
-    }
-    next = addBattlePoints(next, move.power, -ctx.ruleSet.victory.pointsPerBattleLost);
-    if (defenderOwner !== null) {
-      next = addBattlePoints(next, defenderOwner, ctx.ruleSet.victory.pointsPerBattleWon);
-    }
+    // The fleet re-embarks the survivors and sails home.
+    next = returnTroopsHome(next, move.power, move.from, battle.attackerSurvivors);
+    next = returnFleetsHome(next, move.power, move.from, survivingFleets);
+    next = repelled(next, ctx, move.power, defenderOwner);
   }
-
   ctx.events.push({
-    type: "BATTLE",
-    area: move.to,
-    attacker: move.power,
-    defender: defenderOwner,
+    ...battleBase,
     attackerWon: battle.attackerWon,
-    attackerLosses: landingTroops - battle.attackerSurvivors,
-    defenderLosses: target.troops - battle.defenderSurvivors,
+    attackerLosses: move.troops - battle.attackerSurvivors + (move.fleets - survivingFleets),
+    defenderLosses: target.troops - battle.defenderSurvivors + dest.fleets,
   });
-
   return next;
 }
 
-/** Apply a friendly reinforcement move (destination already controlled). */
+/** Apply a friendly move (the destination is held by the mover when it arrives). */
 function applyReinforcement(state: GameState, move: PendingMove): GameState {
   const dest = getAreaState(state, move.to);
   return withArea(state, {
@@ -258,9 +320,43 @@ function applyReinforcement(state: GameState, move: PendingMove): GameState {
   });
 }
 
+/** One unit of combat: a power's combined land assault on an area, or a single landing by sea. */
+interface Assault {
+  readonly power: PowerId;
+  readonly to: AreaId;
+  readonly bySea: boolean;
+  readonly legs: readonly PendingMove[];
+}
+
+/** Group a power's land moves on the same target; sea moves stay separate. */
+function groupAssaults(moves: readonly PendingMove[], ruleSet: RuleSet): Assault[] {
+  const order = (p: PowerId): number => ruleSet.playOrder.indexOf(p);
+  const sorted = [...moves].sort((a, b) => order(a.power) - order(b.power));
+  const out: Assault[] = [];
+  const land = new Map<string, PendingMove[]>();
+  for (const m of sorted) {
+    if (m.bySea) {
+      out.push({ power: m.power, to: m.to, bySea: true, legs: [m] });
+      continue;
+    }
+    const key = `${String(m.power)}>${String(m.to)}`;
+    const legs = land.get(key);
+    if (legs) {
+      legs.push(m);
+    } else {
+      const fresh = [m];
+      land.set(key, fresh);
+      out.push({ power: m.power, to: m.to, bySea: false, legs: fresh });
+    }
+  }
+  return out;
+}
+
 /**
- * Resolve all pending movement into combat: reinforcements first, then attacks
- * (ordered by the attacking power's play order, matching the manual).
+ * Resolve all pending movement. Moves into areas the mover already holds land
+ * first; then assaults run in play order. Ownership is re-checked right before
+ * each assault, so a wave that arrives after its own side took the area simply
+ * reinforces it instead of fighting its own garrison.
  */
 export function resolveCombat(
   state: GameState,
@@ -269,26 +365,22 @@ export function resolveCombat(
 ): { state: GameState; events: readonly GameEvent[] } {
   const rng = new Rng(state.rngState);
   const ctx: Ctx = { ruleSet, world, rng, events: [] };
-
   let next = state;
 
-  const reinforcements: PendingMove[] = [];
-  const attacks: PendingMove[] = [];
+  const hostile: PendingMove[] = [];
   for (const move of state.pending) {
-    const dest = getAreaState(next, move.to);
-    if (dest.owner === move.power) reinforcements.push(move);
-    else attacks.push(move);
+    if (getAreaState(next, move.to).owner === move.power) next = applyReinforcement(next, move);
+    else hostile.push(move);
   }
 
-  for (const move of reinforcements) {
-    next = applyReinforcement(next, move);
-  }
-
-  const orderIndex = (p: PowerId): number => ruleSet.playOrder.indexOf(p);
-  attacks.sort((m1, m2) => orderIndex(m1.power) - orderIndex(m2.power));
-
-  for (const move of attacks) {
-    next = resolveAttack(next, move, ctx);
+  for (const assault of groupAssaults(hostile, ruleSet)) {
+    if (getAreaState(next, assault.to).owner === assault.power) {
+      for (const leg of assault.legs) next = applyReinforcement(next, leg);
+      continue;
+    }
+    next = assault.bySea
+      ? resolveSeaAssault(next, assault.legs[0]!, ctx)
+      : resolveLandAssault(next, assault.legs, ctx);
   }
 
   next = { ...next, pending: [], rngState: rng.snapshot(), tick: next.tick + 1 };

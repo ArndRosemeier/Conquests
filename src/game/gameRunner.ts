@@ -1,11 +1,9 @@
 import type { PlayerController } from "../controllers/types.ts";
 import type { Action } from "../engine/state/actions.ts";
-import { resolveCombat as resolveCombatFn } from "../engine/state/combat.ts";
 import type { GameEvent } from "../engine/state/events.ts";
 import type { GameState } from "../engine/state/gameState.ts";
-import { beginNextTurn } from "../engine/state/phases.ts";
 import { reduce } from "../engine/state/reducer.ts";
-import { applyAnnualEconomy, checkWinner } from "../engine/state/scoring.ts";
+import { advanceAfterCombat } from "../engine/state/turn.ts";
 import type { RuleSet } from "../engine/ruleset/types.ts";
 import { EngineError } from "../engine/types.ts";
 import type { PowerId } from "../engine/types.ts";
@@ -29,6 +27,7 @@ const sleep = (ms: number): Promise<void> =>
 export class GameRunner {
   private current: GameState;
   private running = false;
+  private pacing: { aiActionDelayMs: number; combatDelayMs: number };
   private stopped = false;
 
   public constructor(
@@ -39,6 +38,7 @@ export class GameRunner {
     private readonly hooks: GameRunnerHooks,
   ) {
     this.current = initialState;
+    this.pacing = { aiActionDelayMs: hooks.aiActionDelayMs ?? 0, combatDelayMs: hooks.combatDelayMs ?? 0 };
   }
 
   public get state(): GameState {
@@ -57,6 +57,19 @@ export class GameRunner {
    */
   public stop(): void {
     this.stopped = true;
+  }
+
+  /**
+   * Swap in an earlier state of the current human turn (undo). Only valid while
+   * the runner is waiting for that human, which the caller guarantees.
+   */
+  public replace(state: GameState): void {
+    this.set(state, []);
+  }
+
+  /** Change pacing while running (e.g. the player picks a faster AI speed). */
+  public setPacing(aiActionDelayMs: number, combatDelayMs: number): void {
+    this.pacing = { aiActionDelayMs, combatDelayMs };
   }
 
   /** Apply a single action (used for live human input and internally). */
@@ -99,11 +112,13 @@ export class GameRunner {
       const actions = await controller.requestActions({
         view: { power, state: this.current, ruleSet: this.ruleSet, world: this.world },
       });
+      if (this.stopped) return;
 
       for (const action of actions) {
         this.apply(action);
-        if (controller.kind === "ai" && this.hooks.aiActionDelayMs) {
-          await sleep(this.hooks.aiActionDelayMs);
+        if (this.stopped) return;
+        if (controller.kind === "ai" && this.pacing.aiActionDelayMs) {
+          await sleep(this.pacing.aiActionDelayMs);
         }
       }
 
@@ -113,24 +128,10 @@ export class GameRunner {
   }
 
   private async resolveCombat(): Promise<void> {
-    const combat = resolveCombatFn(this.current, this.ruleSet, this.world);
-    this.set(combat.state, combat.events);
-    if (this.hooks.combatDelayMs) {
-      await sleep(this.hooks.combatDelayMs);
-    }
-
-    let next = beginNextTurn(this.current, this.ruleSet);
-    if (next.season === "SPRING") {
-      const eco = applyAnnualEconomy(next, this.ruleSet, this.world);
-      next = eco.state;
-      this.set(next, eco.events);
-    } else {
-      this.set(next);
-    }
-
-    const winner = checkWinner(this.current);
-    if (winner !== null) {
-      this.set({ ...this.current, winner });
+    const result = advanceAfterCombat(this.current, this.ruleSet, this.world);
+    this.set(result.state, result.events);
+    if (this.pacing.combatDelayMs) {
+      await sleep(this.pacing.combatDelayMs);
     }
   }
 }

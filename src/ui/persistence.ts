@@ -7,6 +7,7 @@ import { deserializeGame, serializeGame } from "../engine/state/serialization.ts
  * Two stores: named manual saves, and a rolling ring of the last few autosaves.
  */
 
+// Kept from the game's earlier name so existing saves stay readable.
 const DB_NAME = "colonial-conquest";
 const DB_VERSION = 1;
 const STORE_MANUAL = "saves";

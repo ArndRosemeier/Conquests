@@ -1,0 +1,15 @@
+You write copy for "Conquests", a light-hearted grand strategy game where six great powers (England, Germany, France, USA, Japan, Russia) compete for the world between 1880 and 1914 through armies, fleets, espionage, bribery and loans. The in-game newspaper is "The World Herald". Write punchy, witty, period-flavoured newspaper headlines (max 90 characters each). Keep it tasteful: no slurs, no real people, no gore, no colonial-era racism. Minor countries are treated with respect; the joke is always on the great powers' vanity, generals and bureaucracy.
+
+Return ONLY a JSON object (no markdown fence) with these keys, each an array of strings:
+- "capture_minor": 14 headlines; placeholders {attacker} (a great power) and {area} (a country taken from neutral control).
+- "capture_power": 14 headlines; placeholders {attacker}, {defender} (both great powers) and {area}.
+- "repelled": 12 headlines; {attacker} failed to take {area}, held by {defender} ({defender} may be a great power or "the local garrison").
+- "naval": 10 headlines about a sea battle won by {attacker} off {area}.
+- "war": 12 headlines; {attacker} attacked {defender}, and the two are now at war.
+- "peace": 10 headlines; {attacker} paid {defender} to end their war.
+- "peace_failed": 8 headlines; {attacker} offered {defender} money for peace and was refused.
+- "coup": 12 headlines; agents of {attacker} bribed {area} into joining them.
+- "eliminated": 8 headlines; the great power {defender} has lost its last territory.
+- "new_year": 12 headlines for the start of the year {year}; {leader} is the great power leading the race.
+- "ticker": 40 short funny standalone headlines (no placeholders) for the title screen news crawl, about the era: steam, telegraphs, airships, world fairs, bureaucrats, map-makers, admirals, spies, bankers, explorers.
+- "tips": 16 helpful one-sentence gameplay tips for new players, drawn from these rules: build armies and fleets only in spring at your supply centres (not in the very first spring); fortifying doubles an area's defence; spying reveals a garrison but the report goes stale; bribing a neutral country chips away at its garrison until it flips, but grants no victory points; armies that march into the same area in one turn fight together; each fleet carries 1,000 troops and sails port to port; you must leave 1,000 troops behind when you march out; conquering areas wins victory points; losing battles costs points; income arrives every spring; a loan to a power at war with you may buy peace.

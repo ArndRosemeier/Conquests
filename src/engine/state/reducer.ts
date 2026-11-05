@@ -39,6 +39,12 @@ function requireCan(allowed: boolean, what: string): void {
   }
 }
 
+function requirePositive(amount: number, what: string): void {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new IllegalActionError(`${what} must be a positive amount (got ${amount})`);
+  }
+}
+
 function spend(power: PowerState, amount: number): PowerState {
   if (amount < 0) {
     throw new IllegalActionError(`Cannot spend a negative amount (${amount})`);
@@ -138,6 +144,10 @@ function loanPower(
   if (target === from) {
     throw new IllegalActionError("Cannot loan to yourself");
   }
+  requirePositive(amount, "Loan");
+  if (getPowerState(state, target).eliminated) {
+    throw new IllegalActionError(`'${target}' is out of the game`);
+  }
   const fromState = spend(getPowerState(state, from), amount);
   const targetState = getPowerState(state, target);
   let next = withPower(state, fromState);
@@ -161,18 +171,20 @@ function loanPower(
 
 function loanMinor(
   state: GameState,
+  ruleSet: RuleSet,
   power: PowerId,
   area: AreaId,
   amount: number,
 ): GameState {
   requireCan(canDiplomacy(state), "fund a minor");
+  requirePositive(amount, "Aid");
   const a = getAreaState(state, area);
   if (a.owner !== null) {
     throw new IllegalActionError(`Area ${area} is not a neutral minor`);
   }
   const p = spend(getPowerState(state, power), amount);
   let next = withPower(state, p);
-  const newTroops = a.troops + Math.floor(amount / 30);
+  const newTroops = a.troops + Math.floor(amount * ruleSet.economy.minorTroopsPerDollar);
   next = withArea(next, { ...getAreaState(next, area), troops: newTroops });
   return next;
 }
@@ -185,6 +197,9 @@ function spy(
 ): ReduceResult {
   requireCan(canEspionage(state), "spy");
   const a = getAreaState(state, area);
+  if (a.owner === power) {
+    throw new IllegalActionError(`Area ${area} is your own; there is nothing to spy on`);
+  }
   const cost =
     a.fortified || a.supplyCenterOf !== null
       ? ruleSet.costs.spyFortified
@@ -317,6 +332,9 @@ function moveFleet(
   if (!getArea(world, to).isPort) {
     throw new IllegalActionError(`Destination ${to} is not a port`);
   }
+  if (to === from) {
+    throw new IllegalActionError("A fleet must sail to a different port");
+  }
   if (fleets <= 0 || fleets > src.fleets) {
     throw new IllegalActionError(`Can move 1..${src.fleets} fleets from ${from}, got ${fleets}`);
   }
@@ -370,7 +388,7 @@ export function reduce(
     case "LOAN_POWER":
       return loanPower(state, ruleSet, power, action.target, action.amount);
     case "LOAN_MINOR":
-      return { state: loanMinor(state, power, action.area, action.amount), events: [] };
+      return { state: loanMinor(state, ruleSet, power, action.area, action.amount), events: [] };
     case "SPY":
       return spy(state, ruleSet, power, action.area);
     case "SUBVERT":

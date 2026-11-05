@@ -1,4 +1,4 @@
-# Colonial Conquest — clean FTP deployment (domainfactory / futuremagic.de)
+# Conquests — clean FTP deployment (domainfactory / futuremagic.de)
 #
 # Builds the Vite SPA at repo root, wipes the remote app directory, creates any
 # missing remote directories (including the deploy root), uploads dist/, then

@@ -44,21 +44,41 @@ export interface ScenarioPowerSetup {
 export interface Scenario {
   readonly id: string;
   readonly name: string;
+  /** One line for the setup screen. */
+  readonly blurb: string;
+  /** Calendar year of the first turn (the engine counts years from 1). */
+  readonly startYear: number;
   /** Preset minor stats from ratings (historical) vs randomized (standard). */
   readonly presetMinors: boolean;
   readonly powers: readonly ScenarioPowerSetup[];
+  /**
+   * Garrison multiplier for neutral minors by region id (default 1). Evens out
+   * geography: a power whose home continent is full of weak neighbours would
+   * otherwise snowball unopposed.
+   */
+  readonly minorStrength?: Readonly<Record<number, number>>;
   /** Unordered pairs; both directions of war are created. */
   readonly initialWars: readonly (readonly [PowerId, PowerId])[];
 }
 
 const STARTING_TREASURY = 3_000_000;
 
+/**
+ * The Americas hold more independent states within marching distance of a
+ * single great power than any other continent. Tougher garrisons there keep
+ * the USA from snowballing unopposed (measured with `npm run balance`).
+ */
+const AMERICAS_RESIST: Readonly<Record<number, number>> = { 1: 3, 2: 2 };
+
 /** Standard scenario: powers hold only their home areas; minors randomized. */
 export const SCENARIO_STANDARD: Scenario = {
   id: "standard",
-  name: "Standard Game",
+  name: "Open World",
+  blurb: "Every great power starts at home. The rest of the world is up for grabs, and every map rolls new values.",
+  startYear: 1880,
   presetMinors: false,
   initialWars: [],
+  minorStrength: AMERICAS_RESIST,
   powers: [
     { power: ENGLAND, extraAreas: [], troops: 155_000, fleets: 120, treasury: STARTING_TREASURY },
     { power: GERMANY, extraAreas: [], troops: 365_000, fleets: 90, treasury: STARTING_TREASURY },
@@ -70,14 +90,17 @@ export const SCENARIO_STANDARD: Scenario = {
 };
 
 /**
- * 1880 "The Race for the Colonies". Historical holdings are approximated (the
- * original's Scenario Data Card was not available); tune freely via this data.
+ * 1880 "The Scramble". Historical holdings are approximated; tune freely via
+ * this data.
  */
 export const SCENARIO_1880: Scenario = {
   id: "1880",
-  name: "1880 - The Race for the Colonies",
+  name: "1880: The Scramble",
+  blurb: "Historical holdings and fixed values. The race for the last unclaimed lands is on.",
+  startYear: 1880,
   presetMinors: true,
   initialWars: [],
+  minorStrength: AMERICAS_RESIST,
   powers: [
     {
       power: ENGLAND,
@@ -125,13 +148,16 @@ export const SCENARIO_1880: Scenario = {
 };
 
 /**
- * 1914 "The Brink of War". Germany begins at war with England, France, and
- * Russia (per the manual). Historical holdings approximated.
+ * 1914 "The Brink". Germany begins at war with England, France, and Russia.
+ * Historical holdings approximated.
  */
 export const SCENARIO_1914: Scenario = {
   id: "1914",
-  name: "1914 - The Brink of War",
+  name: "1914: The Brink",
+  blurb: "Huge armies and old grudges. Germany starts at war with England, France and Russia.",
+  startYear: 1914,
   presetMinors: true,
+  minorStrength: AMERICAS_RESIST,
   initialWars: [
     [GERMANY, ENGLAND],
     [GERMANY, FRANCE],

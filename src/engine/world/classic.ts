@@ -4,7 +4,7 @@ import type { Area, WorldDefinition } from "./types.ts";
 import { REAL_WORLD } from "./realWorld.ts";
 
 /**
- * The default Colonial Conquest world. It is produced by the generic
+ * The default Conquests world. It is produced by the generic
  * site-based Voronoi builder from real Earth geography (see `realWorld.ts`).
  * Swapping in a different map — including a procedurally generated one — just
  * means handing another `WorldDefinition` to the engine and UI.

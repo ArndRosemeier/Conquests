@@ -1,9 +1,9 @@
 {
-  "name": "colonial-conquest",
+  "name": "conquests",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "A faithful, single-player TypeScript/React remake of SSI's Colonial Conquest (1985).",
+  "description": "Conquests: grand strategy of rival empires, 1880-1914, in the browser.",
   "scripts": {
     "start": "vite --open",
     "dev": "vite",
@@ -15,13 +15,15 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "balance": "vite-node scripts/balance.ts"
   },
   "dependencies": {
     "d3-delaunay": "^6.0.4",
     "polygon-clipping": "^0.15.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "three": "^0.170.0",
     "topojson-client": "^3.1.0",
     "world-atlas": "^2.0.2",
     "zustand": "^4.5.5"
@@ -31,6 +33,7 @@
     "@types/node": "^26.1.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.170.0",
     "@types/topojson-client": "^3.1.5",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",

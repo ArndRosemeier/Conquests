@@ -306,7 +306,7 @@ export function buildWorldFromSites(opts: BuildWorldOptions): WorldDefinition {
 /**
  * Two countries are neighbours when land atoms of each are joined by a land edge
  * (from `landAdj`, which already excludes water crossings), plus any forced
- * links for isthmuses and the manual's special sea crossings.
+ * links for isthmuses and hand-picked special sea crossings.
  */
 function buildAdjacency(
   landAdj: readonly number[][],

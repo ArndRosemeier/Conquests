@@ -61,9 +61,12 @@ export interface EconomyRules {
   readonly guaranteedPeaceLoan: number;
   /** Minimum loan that has any chance of ending a war. */
   readonly minPeaceLoan: number;
+  /** Troops a neutral minor raises per dollar of economic aid it receives. */
+  readonly minorTroopsPerDollar: number;
 }
 
 export interface VictoryRules {
+  /** Winning-score choices offered at setup; 0 means play without a score limit. */
   readonly options: readonly number[];
   readonly pointsPerBattleWon: number;
   readonly pointsPerBattleLost: number;

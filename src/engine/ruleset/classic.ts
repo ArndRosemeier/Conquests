@@ -2,9 +2,8 @@ import { powerId } from "../types.ts";
 import type { PowerDef, RuleSet } from "./types.ts";
 
 /**
- * Faithful reproduction of SSI Colonial Conquest (1985) balance data, taken
- * from the Major Country Comparison Chart and the rulebook. Everything is a
- * plain object so alternate rulesets can be authored without touching code.
+ * The standard balance for the six great powers. Everything is a plain object
+ * so alternate rulesets can be authored without touching code.
  */
 
 export const ENGLAND = powerId("england");
@@ -18,7 +17,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: ENGLAND,
     name: "England",
-    color: "#8e44ad",
+    color: "#8a5cc8",
     armyOffense: 1,
     armyDefense: 1,
     armyCostPer10k: 600_000,
@@ -29,7 +28,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: GERMANY,
     name: "Germany",
-    color: "#7f8c8d",
+    color: "#9aa3ad",
     armyOffense: 3,
     armyDefense: 2,
     armyCostPer10k: 400_000,
@@ -40,7 +39,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: FRANCE,
     name: "France",
-    color: "#27ae60",
+    color: "#2fa866",
     armyOffense: 2,
     armyDefense: 2,
     armyCostPer10k: 300_000,
@@ -51,7 +50,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: USA,
     name: "USA",
-    color: "#5dade2",
+    color: "#4f9ee6",
     armyOffense: 2,
     armyDefense: 2,
     armyCostPer10k: 300_000,
@@ -62,7 +61,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: JAPAN,
     name: "Japan",
-    color: "#f1c40f",
+    color: "#e7b93c",
     armyOffense: 4,
     armyDefense: 3,
     armyCostPer10k: 300_000,
@@ -73,7 +72,7 @@ const POWERS: readonly PowerDef[] = [
   {
     id: RUSSIA,
     name: "Russia",
-    color: "#c0392b",
+    color: "#cf4632",
     armyOffense: 4,
     armyDefense: 3,
     armyCostPer10k: 200_000,
@@ -111,9 +110,10 @@ export const CLASSIC_RULESET: RuleSet = {
   economy: {
     guaranteedPeaceLoan: 8_000_000,
     minPeaceLoan: 300_000,
+    minorTroopsPerDollar: 1 / 30,
   },
   victory: {
-    options: [500, 1000, 1500, Number.POSITIVE_INFINITY],
+    options: [500, 1000, 1500, 0],
     pointsPerBattleWon: 1,
     pointsPerBattleLost: 1,
     standardAreaValueMin: 13,

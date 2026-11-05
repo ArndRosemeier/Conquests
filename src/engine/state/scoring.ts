@@ -105,10 +105,12 @@ export function annualIncomeFor(
 
 /** Highest-scoring power that meets the winning score, or null. */
 export function checkWinner(state: GameState): PowerId | null {
-  if (!Number.isFinite(state.winningScore)) return null;
+  // 0 (or a missing value from an old save) means no score limit.
+  if (!(state.winningScore > 0) || !Number.isFinite(state.winningScore)) return null;
   let best: PowerId | null = null;
   let bestScore = state.winningScore - 1;
   for (const p of Object.values(state.powers)) {
+    if (p.eliminated) continue;
     if (p.score > bestScore) {
       bestScore = p.score;
       best = p.id;

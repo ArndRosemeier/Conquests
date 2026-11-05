@@ -120,7 +120,10 @@ export interface GameState {
   readonly rulesetId: string;
   readonly worldId: string;
   readonly scenarioId: string;
+  /** Turn year counted from 1; see `calendarYear` for the date shown to players. */
   readonly year: number;
+  /** Calendar year of year 1 (from the scenario). */
+  readonly startYear: number;
   readonly season: Season;
   /** Whether a power is acting freely (PLAYER) or combat is resolving (COMBAT). */
   readonly stage: TurnStage;
@@ -140,4 +143,9 @@ export interface GameState {
   readonly winner: PowerId | null;
   /** Monotonic counter, useful for UI keys and replay ordering. */
   readonly tick: number;
+}
+
+/** The calendar year players see (e.g. 1880), from the engine's 1-based year. */
+export function calendarYear(state: Pick<GameState, "year" | "startYear">): number {
+  return state.startYear + state.year - 1;
 }

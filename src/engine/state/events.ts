@@ -28,6 +28,9 @@ export type GameEvent =
       readonly attackerWon: boolean;
       readonly attackerLosses: number;
       readonly defenderLosses: number;
+      /** Areas the attack set out from (several when armies converged). */
+      readonly from: readonly AreaId[];
+      readonly bySea: boolean;
     }
   | {
       readonly type: "CONTROL_CHANGE";
@@ -35,6 +38,7 @@ export type GameEvent =
       readonly from: PowerId | null;
       readonly to: PowerId | null;
     }
+  /** `by` attacked `against`; the two are now at war. */
   | {
       readonly type: "WAR_DECLARED";
       readonly by: PowerId;
@@ -45,4 +49,9 @@ export type GameEvent =
       readonly by: PowerId;
       readonly against: PowerId;
     }
-  | { readonly type: "PEACE_LOAN_FAILED"; readonly by: PowerId; readonly target: PowerId };
+  | { readonly type: "PEACE_LOAN_FAILED"; readonly by: PowerId; readonly target: PowerId }
+  /** A power lost its last area and is out of the game. */
+  | { readonly type: "POWER_ELIMINATED"; readonly power: PowerId }
+  /** Annual payout at the start of spring. */
+  | { readonly type: "INCOME"; readonly power: PowerId; readonly amount: number }
+  | { readonly type: "GAME_WON"; readonly power: PowerId };

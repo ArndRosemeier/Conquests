@@ -3,17 +3,17 @@ import type { AiVersion } from "../controllers/ai/factory.ts";
 import type { PersonaKnobs } from "../controllers/ai/persona.ts";
 import type { PlayerController } from "../controllers/types.ts";
 import { CLASSIC_RULESET } from "../engine/ruleset/classic.ts";
-import { resolveCombat } from "../engine/state/combat.ts";
 import { allAreas } from "../engine/state/helpers.ts";
-import { beginNextTurn } from "../engine/state/phases.ts";
 import { reduce } from "../engine/state/reducer.ts";
 import { Rng } from "../engine/state/rng.ts";
-import { annualIncomeFor, applyAnnualEconomy, checkWinner } from "../engine/state/scoring.ts";
+import { annualIncomeFor } from "../engine/state/scoring.ts";
+import { advanceAfterCombat } from "../engine/state/turn.ts";
 import { createGame } from "../engine/state/setup.ts";
 import type { PowerControlConfig } from "../engine/state/setup.ts";
 import type { PowerId } from "../engine/types.ts";
 import { CLASSIC_WORLD } from "../engine/world/classic.ts";
 import { CLASSIC_HOME, SCENARIO_STANDARD } from "../engine/world/scenarios.ts";
+import type { Scenario } from "../engine/world/scenarios.ts";
 
 /**
  * Headless game simulation, shared by the CLI stress-test script and the in-app
@@ -56,6 +56,8 @@ export interface SimGameResult {
 
 export interface SimGameOptions {
   readonly winningScore: number;
+  /** Scenario to play (default: the open-world standard game). */
+  readonly scenario?: Scenario;
   readonly maxYears: number;
   readonly seed: number;
 }
@@ -96,7 +98,7 @@ export async function playSimGame(
     ruleSet: CLASSIC_RULESET,
     world: CLASSIC_WORLD,
     home: CLASSIC_HOME,
-    scenario: SCENARIO_STANDARD,
+    scenario: opts.scenario ?? SCENARIO_STANDARD,
     controls,
     winningScore: opts.winningScore,
     seed: opts.seed,
@@ -109,13 +111,7 @@ export async function playSimGame(
   try {
     while (state.winner === null && state.year <= opts.maxYears) {
       if (state.stage === "COMBAT") {
-        state = resolveCombat(state, CLASSIC_RULESET, CLASSIC_WORLD).state;
-        state = beginNextTurn(state, CLASSIC_RULESET);
-        if (state.season === "SPRING") {
-          state = applyAnnualEconomy(state, CLASSIC_RULESET, CLASSIC_WORLD).state;
-        }
-        const winner = checkWinner(state);
-        if (winner !== null) state = { ...state, winner };
+        state = advanceAfterCombat(state, CLASSIC_RULESET, CLASSIC_WORLD).state;
         continue;
       }
 

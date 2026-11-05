@@ -6,9 +6,8 @@ import { CLASSIC_RULESET } from "./ruleset/classic.ts";
 import { resolveCombat } from "./state/combat.ts";
 import type { GameState } from "./state/gameState.ts";
 import { allAreas } from "./state/helpers.ts";
-import { beginNextTurn } from "./state/phases.ts";
 import { reduce } from "./state/reducer.ts";
-import { applyAnnualEconomy } from "./state/scoring.ts";
+import { advanceAfterCombat } from "./state/turn.ts";
 import { deserializeGame, serializeGame } from "./state/serialization.ts";
 import { createGame } from "./state/setup.ts";
 import type { PowerControlConfig } from "./state/setup.ts";
@@ -36,12 +35,7 @@ function allAiGame(seed: number, winningScore: number): GameState {
 /** Advance one turn (a single power acting, or combat) with AI controllers. */
 async function stepTurn(state: GameState): Promise<GameState> {
   if (state.stage === "COMBAT") {
-    let next = resolveCombat(state, CLASSIC_RULESET, CLASSIC_WORLD).state;
-    next = beginNextTurn(next, CLASSIC_RULESET);
-    if (next.season === "SPRING") {
-      next = applyAnnualEconomy(next, CLASSIC_RULESET, CLASSIC_WORLD).state;
-    }
-    return next;
+    return advanceAfterCombat(state, CLASSIC_RULESET, CLASSIC_WORLD).state;
   }
   const ai: PlayerController = createAI(DEFAULT_AI_VERSION, CLASSIC_RULESET, CLASSIC_WORLD);
   const power = state.activePower!;

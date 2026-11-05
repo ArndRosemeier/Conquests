@@ -10,7 +10,7 @@ import { getPowerState } from "./helpers.ts";
  * it may take any allowed action in any order and then end its turn.
  */
 
-/** The founding turn (year 1 spring) forbids building/diplomacy (manual 6.1.3). */
+/** The founding turn (year 1 spring) forbids building and diplomacy. */
 export function isFoundingTurn(state: GameState): boolean {
   return state.year === 1 && state.season === "SPRING";
 }

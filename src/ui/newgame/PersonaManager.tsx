@@ -1,144 +1,12 @@
 import { useState } from "react";
 import type React from "react";
-import {
-  KNOB_KEYS,
-  KNOB_LABELS,
-  NEUTRAL_KNOB,
-  clampKnob,
-  knobs as buildKnobs,
-} from "../controllers/ai/persona.ts";
-import type { Persona, PersonaKnobs } from "../controllers/ai/persona.ts";
-import { CLASSIC_RULESET } from "../engine/ruleset/classic.ts";
-import type { PowerId } from "../engine/types.ts";
-import { SCENARIOS } from "../engine/world/scenarios.ts";
-import type { SeatPersona } from "../game/simulation.ts";
-import { PersonaCrashTest } from "./panels/PersonaCrashTest.tsx";
-import {
-  allPersonas,
-  deleteCustomPersona,
-  newPersonaId,
-  saveCustomPersona,
-} from "./personaStore.ts";
-import { useGame } from "./store.ts";
+import { KNOB_KEYS, KNOB_LABELS, NEUTRAL_KNOB, clampKnob, knobs as buildKnobs } from "../../controllers/ai/persona.ts";
+import type { Persona, PersonaKnobs } from "../../controllers/ai/persona.ts";
+import type { SeatPersona } from "../../game/simulation.ts";
+import { deleteCustomPersona, newPersonaId, saveCustomPersona } from "../personaStore.ts";
+import { PersonaCrashTest } from "./PersonaCrashTest.tsx";
 
 const toSeat = (p: Persona): SeatPersona => ({ id: p.id, name: p.name, knobs: p.knobs });
-
-const RANDOM = "__random__";
-
-export function SetupScreen(): React.JSX.Element {
-  const startGame = useGame((s) => s.startGame);
-  const setSaveLoadOpen = useGame((s) => s.setSaveLoadOpen);
-  const [scenarioId, setScenarioId] = useState(SCENARIOS[0]!.id);
-  const [humanPower, setHumanPower] = useState<PowerId>(CLASSIC_RULESET.playOrder[0]!);
-  const [winningScore, setWinningScore] = useState(1000);
-  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1_000_000));
-
-  const [pool, setPool] = useState<readonly Persona[]>(() => allPersonas());
-  const [personaChoice, setPersonaChoice] = useState<string>(RANDOM);
-  const [manageOpen, setManageOpen] = useState(false);
-
-  const begin = (): void => {
-    startGame({
-      scenarioId,
-      humanPower,
-      personaMode: personaChoice === RANDOM ? "random" : "specific",
-      personaId: personaChoice === RANDOM ? null : personaChoice,
-      personaPool: pool,
-      winningScore,
-      seed,
-    });
-  };
-
-  return (
-    <div className="setup">
-      <div className="setup-card">
-        <h1>Colonial Conquest</h1>
-        <p className="subtitle">Empire building, 1880 - 1914. A modern remake.</p>
-
-        <label>
-          Scenario
-          <select value={scenarioId} onChange={(e) => setScenarioId(e.target.value)}>
-            {SCENARIOS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          Play as
-          <div className="power-picker">
-            {CLASSIC_RULESET.powers.map((p) => (
-              <button
-                key={String(p.id)}
-                className={`power-chip ${humanPower === p.id ? "active" : ""}`}
-                style={{ borderColor: p.color }}
-                onClick={() => setHumanPower(p.id)}
-              >
-                <span className="dot" style={{ background: p.color }} />
-                {p.name}
-              </button>
-            ))}
-          </div>
-        </label>
-
-        <label>
-          Opponents
-          <select value={personaChoice} onChange={(e) => setPersonaChoice(e.target.value)}>
-            <option value={RANDOM}>Random (shuffle personas)</option>
-            {pool.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.builtIn ? "" : " (custom)"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="persona-hint">
-          {personaChoice === RANDOM
-            ? "Each AI gets a different persona, dealt from the pool."
-            : (pool.find((p) => p.id === personaChoice)?.blurb ?? "")}
-          <button className="link-btn" onClick={() => setManageOpen(true)}>
-            Manage personas
-          </button>
-        </p>
-
-        <label>
-          Winning score
-          <select value={winningScore} onChange={(e) => setWinningScore(Number(e.target.value))}>
-            <option value={500}>500 (quick)</option>
-            <option value={1000}>1000</option>
-            <option value={1500}>1500 (long)</option>
-          </select>
-        </label>
-
-        <label>
-          Seed
-          <input type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))} />
-        </label>
-
-        <button className="btn primary large" onClick={begin}>
-          Begin Conquest
-        </button>
-        <button className="btn large" onClick={() => setSaveLoadOpen(true)}>
-          Load Game
-        </button>
-      </div>
-
-      {manageOpen && (
-        <PersonaManager
-          pool={pool}
-          onChange={(next, selectId) => {
-            setPool(next);
-            if (selectId !== undefined) setPersonaChoice(selectId);
-          }}
-          onClose={() => setManageOpen(false)}
-        />
-      )}
-    </div>
-  );
-}
 
 interface PersonaManagerProps {
   readonly pool: readonly Persona[];
@@ -147,7 +15,7 @@ interface PersonaManagerProps {
 }
 
 /** A lightweight editor for creating, tuning, and crash-testing personas. */
-function PersonaManager({ pool, onChange, onClose }: PersonaManagerProps): React.JSX.Element {
+export function PersonaManager({ pool, onChange, onClose }: PersonaManagerProps): React.JSX.Element {
   const [draft, setDraft] = useState<Persona | null>(null);
   const [testing, setTesting] = useState<SeatPersona | null>(null);
 
@@ -184,8 +52,8 @@ function PersonaManager({ pool, onChange, onClose }: PersonaManagerProps): React
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal persona-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="overlay" onClick={onClose}>
+      <div className="modal glass persona-modal" onClick={(e) => e.stopPropagation()}>
         {testing !== null ? (
           <PersonaCrashTest persona={testing} onBack={() => setTesting(null)} />
         ) : (
