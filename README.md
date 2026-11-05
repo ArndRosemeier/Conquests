@@ -31,15 +31,9 @@ npm run gen:world  # regenerate the precomputed world map
 
 ## Playing online
 
-Online games run on the GameHub relay at games.futuremagic.de (app id `conquests`). The build needs
-the game's key; put it in `.env.local` (git ignores it), next to `package.json`:
-
-```bash
-VITE_GAMEHUB_KEY=ghk_conquests_...
-# optional: VITE_GAMEHUB_URL=https://games.futuremagic.de
-```
-
-Without a key the game still works offline and the Online screen says that online play is not set up.
+Online games run on the GameHub relay at games.futuremagic.de (app id `conquests`). The app key is
+committed in `src/net/config.ts`; it is not a secret (the hub stores nothing and limits traffic). A
+build can override it with `VITE_GAMEHUB_KEY` and the server with `VITE_GAMEHUB_URL`, e.g. in `.env.local`.
 
 How it works (`src/net/`):
 
