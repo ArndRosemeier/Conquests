@@ -1,3 +1,4 @@
+import { canAttackOwner } from "../../engine/state/diplomacy.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { perceive } from "../../engine/state/knowledge.ts";
@@ -56,8 +57,15 @@ export function MapCanvas(): React.JSX.Element {
     if (move === null || move.to !== null) return out;
     if (move.mode === "army") for (const n of neighborsOf(world, move.from)) out.add(n);
     else for (const p of ports) if (p !== move.from) out.add(p);
+    // Land of powers you are at peace with is off limits until you declare war.
+    if (gameState !== null && me !== null) {
+      for (const id of out) {
+        const owner = gameState.areas[String(id)]?.owner ?? null;
+        if (!canAttackOwner(gameState, me, owner)) out.delete(id);
+      }
+    }
     return out;
-  }, [move, world, ports]);
+  }, [move, world, ports, gameState, me]);
 
   useEffect(() => {
     const r = rendererRef.current;

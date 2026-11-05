@@ -2,6 +2,7 @@ import type { RuleSet } from "../ruleset/types.ts";
 import { EngineError } from "../types.ts";
 import type { PowerId, Season } from "../types.ts";
 import type { GameState } from "./gameState.ts";
+import { expireOffersFrom } from "./diplomacy.ts";
 import { getPowerState } from "./helpers.ts";
 
 /**
@@ -61,7 +62,7 @@ export function beginTurnFor(
   power: PowerId,
 ): GameState {
   return {
-    ...state,
+    ...expireOffersFrom(state, power),
     stage: "PLAYER",
     activePower: power,
     armyMovesRemaining: ruleSet.limits.armyMoves,

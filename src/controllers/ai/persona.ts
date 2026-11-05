@@ -29,6 +29,8 @@ export const KNOB_KEYS = [
   "risk",
   "reserves",
   "naval",
+  "honor",
+  "opportunism",
 ] as const satisfies readonly (keyof PersonaKnobs)[];
 
 /** Human-readable labels for each knob. */
@@ -41,6 +43,8 @@ export const KNOB_LABELS: Readonly<Record<keyof PersonaKnobs, string>> = {
   risk: "Risk-taking",
   reserves: "Reserves",
   naval: "Naval reach",
+  honor: "Honor",
+  opportunism: "Opportunism",
 };
 
 const BASELINE: PersonaKnobs = {
@@ -52,6 +56,8 @@ const BASELINE: PersonaKnobs = {
   risk: NEUTRAL_KNOB,
   reserves: NEUTRAL_KNOB,
   naval: NEUTRAL_KNOB,
+  honor: NEUTRAL_KNOB,
+  opportunism: NEUTRAL_KNOB,
 };
 
 /** Clamp a knob to a valid integer in [0, 100]. */
@@ -75,7 +81,7 @@ export const BUILTIN_PERSONAS: readonly Persona[] = [
     name: "Statesman",
     blurb: "Balanced on every front.",
     builtIn: true,
-    knobs: knobs({}),
+    knobs: knobs({ honor: 65, opportunism: 45 }),
   },
   {
     id: "conqueror",
@@ -89,6 +95,8 @@ export const BUILTIN_PERSONAS: readonly Persona[] = [
       corrupt: 35,
       risk: 70,
       reserves: 28,
+      honor: 35,
+      opportunism: 60,
     }),
   },
   {
@@ -102,6 +110,8 @@ export const BUILTIN_PERSONAS: readonly Persona[] = [
       intelligence: 62,
       naval: 78,
       reserves: 45,
+      honor: 55,
+      opportunism: 40,
     }),
   },
   {
@@ -116,12 +126,14 @@ export const BUILTIN_PERSONAS: readonly Persona[] = [
       intelligence: 60,
       risk: 38,
       reserves: 60,
+      honor: 60,
+      opportunism: 45,
     }),
   },
   {
     id: "fortress",
     name: "Fortress",
-    blurb: "Digs in, defends, expands cautiously.",
+    blurb: "Digs in, defends, keeps its word.",
     builtIn: true,
     knobs: knobs({
       expansion: 40,
@@ -130,12 +142,14 @@ export const BUILTIN_PERSONAS: readonly Persona[] = [
       risk: 26,
       reserves: 78,
       naval: 38,
+      honor: 75,
+      opportunism: 25,
     }),
   },
   {
     id: "jackal",
     name: "Jackal",
-    blurb: "Watches closely, strikes the weakened.",
+    blurb: "Watches closely, strikes the weakened. Not to be trusted.",
     builtIn: true,
     knobs: knobs({
       aggression: 66,
@@ -143,6 +157,8 @@ export const BUILTIN_PERSONAS: readonly Persona[] = [
       corrupt: 55,
       risk: 64,
       reserves: 35,
+      honor: 20,
+      opportunism: 85,
     }),
   },
 ];

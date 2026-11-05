@@ -444,6 +444,8 @@ select { cursor: pointer; }
 .chip { padding: 5px 11px; border-radius: 99px; border: 1px solid var(--glass-line); background: rgba(255,255,255,.04); cursor: pointer; font-size: 13px; }
 .chip:hover { border-color: var(--brass); background: rgba(214,178,107,.14); }
 .hint { color: var(--text-dim); font-size: 13px; margin: 4px 0; }
+.chip.accept { border-color: var(--brass); color: var(--brass-2); }
+.peace-offers { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); z-index: 30; width: min(420px, calc(100% - 32px)); padding: 10px; display: grid; gap: 8px; animation: rise .35s cubic-bezier(.2,.8,.2,1); }
 .hint.big { font-size: 15px; color: var(--text); }
 .move-form { display: grid; gap: 4px; }
 .move-dest { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-radius: 10px; background: rgba(214,178,107,.1); font-weight: 600; }

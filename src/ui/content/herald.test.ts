@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { knobs } from "../../controllers/ai/persona.ts";
 import { CLASSIC_RULESET, ENGLAND, FRANCE } from "../../engine/ruleset/classic.ts";
 import { resolveCombat } from "../../engine/state/combat.ts";
+import { startWar } from "../../engine/state/diplomacy.ts";
 import type { GameState } from "../../engine/state/gameState.ts";
 import { getAreaState, withArea } from "../../engine/state/helpers.ts";
 import { createGame } from "../../engine/state/setup.ts";
@@ -27,6 +28,7 @@ function seaAttack(troops: number, fleets: number): ReturnType<typeof resolveCom
   const from: AreaId = W.areas.find((a) => a.isPort && a.id !== NORMANDY && getAreaState(s, a.id).owner === ENGLAND)!.id;
   s = withArea(s, { ...getAreaState(s, NORMANDY), owner: FRANCE, troops: 2_000, fleets: 1, fortified: false });
   s = withArea(s, { ...getAreaState(s, from), fleets });
+  s = startWar(s, ENGLAND, FRANCE);
   s = { ...s, pending: [{ power: ENGLAND, from, to: NORMANDY, troops, fleets, bySea: true }] };
   return resolveCombat(s, R, W);
 }

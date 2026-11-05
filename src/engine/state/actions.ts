@@ -26,6 +26,12 @@ export type Action =
       readonly fleets: number;
       readonly troops: number;
     }
+  /** Declare war on another power (costs reputation; blocked during a truce). */
+  | { readonly type: "DECLARE_WAR"; readonly target: PowerId }
+  /** Offer peace to an enemy; `payment` is paid on acceptance (negative = demand tribute). */
+  | { readonly type: "OFFER_PEACE"; readonly target: PowerId; readonly payment: number }
+  /** Accept or refuse a peace offer made to you. */
+  | { readonly type: "ANSWER_PEACE"; readonly from: PowerId; readonly accept: boolean }
   /** Finish the active power's turn. */
   | { readonly type: "END_TURN" };
 

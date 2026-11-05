@@ -108,8 +108,6 @@ export const CLASSIC_RULESET: RuleSet = {
     terrainDefensePerPoint: 0.25,
   },
   economy: {
-    guaranteedPeaceLoan: 8_000_000,
-    minPeaceLoan: 300_000,
     minorTroopsPerDollar: 1 / 30,
   },
   victory: {
@@ -125,6 +123,16 @@ export const CLASSIC_RULESET: RuleSet = {
     worthResistance: 0.0000002,
     bribeVariance: 0.6,
     coupGarrison: 1_000,
+  },
+  diplomacy: {
+    truceSeasons: 8,
+    reputationStart: 50,
+    reputationMax: 100,
+    declareWarCost: 12,
+    declareWarOnPariahCost: 4,
+    pariahBelow: 25,
+    recoveryPerYear: 4,
+    warPointsPerBattle: 5,
   },
 };
 

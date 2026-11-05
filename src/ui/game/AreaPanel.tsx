@@ -5,7 +5,15 @@ import { getAreaState, getPowerState, isAtWar } from "../../engine/state/helpers
 import { perceive } from "../../engine/state/knowledge.ts";
 import { canBuild, canDiplomacy, canEspionage, canSubvert } from "../../engine/state/legalActions.ts";
 import { isFoundingTurn } from "../../engine/state/phases.ts";
-import type { AreaId } from "../../engine/types.ts";
+import {
+  declareWarCost,
+  offersTo,
+  reputationOf,
+  truceUntil,
+  warBalance,
+  warBlocker,
+} from "../../engine/state/diplomacy.ts";
+import type { AreaId, PowerId } from "../../engine/types.ts";
 import { getArea } from "../../engine/world/classic.ts";
 import { lookOf, money, powerColor, powerName, troops } from "../content/powers.ts";
 import { intelAgeLabel, terrainLabel } from "../labels.ts";
@@ -174,14 +182,62 @@ function Actions({ area, yourTurn }: { area: AreaId; yourTurn: boolean }): React
   }
 
   const owner = st.owner;
+  const name = powerName(ruleSet.powers, owner);
+  const neutralPower = getPowerState(gs, owner).control === "neutral";
   const atWar = isAtWar(gs, me, owner);
+  const truce = truceUntil(gs, me, owner);
+  const myOffer = (gs.peaceOffers ?? []).find((o) => o.from === me && o.to === owner);
+  const theirOffer = (gs.peaceOffers ?? []).find((o) => o.from === owner && o.to === me);
+  const balance = warBalance(gs, me, owner);
+  const blocker = warBlocker(gs, me, owner);
   const spyCost = st.fortified || st.supplyCenterOf !== null ? ruleSet.costs.spyFortified : ruleSet.costs.spyMinor;
   return (
     <div className="actions">
       <div className="actions-title">Orders</div>
       <p className="hint">
-        {atWar ? `You are at war with ${powerName(ruleSet.powers, owner)}.` : `Attacking ${powerName(ruleSet.powers, owner)} starts a war.`}
+        {neutralPower
+          ? `${name} is not in this game; its land can be taken without a war.`
+          : atWar
+            ? `You are at war with ${name}. ${balance > 0 ? `You are winning (+${balance}).` : balance < 0 ? `You are losing (${balance}).` : "Neither side leads."}`
+            : truce !== null
+              ? `Truce with ${name} until ${seasonLabel(gs, truce)}. No war until then.`
+              : `At peace with ${name}. You must declare war before you can attack.`}
       </p>
+      {!neutralPower && !atWar && (
+        <ActionButton
+          icon="⚔"
+          title="Declare war"
+          sub={`Your reputation −${declareWarCost(gs, ruleSet, owner)} (now ${reputationOf(gs, ruleSet, me)})`}
+          disabled={notYet ?? blocker}
+          onClick={() => play({ type: "DECLARE_WAR", target: owner })}
+        />
+      )}
+      {atWar && theirOffer && <PeaceAnswer from={owner} payment={theirOffer.payment} disabled={notYet} />}
+      {atWar && !theirOffer && myOffer && (
+        <p className="hint">Peace offer sent ({termsLabel(myOffer.payment, true)}). {name} answers on its turn.</p>
+      )}
+      {atWar && !theirOffer && !myOffer && (
+        <div className={`buy${notYet ? " is-off" : ""}`}>
+          <div className="buy-head">
+            <span className="action-icon">🕊</span>
+            <span className="action-text">
+              <b>Offer peace</b>
+              <small>{notYet ?? `${name} answers on its turn. Then ${ruleSet.diplomacy.truceSeasons / 4} years of truce.`}</small>
+            </span>
+          </div>
+          {!notYet && (
+            <div className="chips">
+              <button className="chip" onClick={() => play({ type: "OFFER_PEACE", target: owner, payment: 0 })}>No payment</button>
+              {PEACE_PAYMENTS.filter((a) => a <= treasury).map((a) => (
+                <button key={a} className="chip" onClick={() => play({ type: "OFFER_PEACE", target: owner, payment: a })}>Pay {money(a)}</button>
+              ))}
+              {balance > 0 && PEACE_DEMANDS.map((a) => (
+                <button key={`d${a}`} className="chip" onClick={() => play({ type: "OFFER_PEACE", target: owner, payment: -a })}>Demand {money(a)}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <ActionButton
         icon="🔍"
         title="Spy"
@@ -190,8 +246,8 @@ function Actions({ area, yourTurn }: { area: AreaId; yourTurn: boolean }): React
         onClick={() => play({ type: "SPY", area })}
       />
       <LoanRow
-        title={atWar ? "Buy peace" : "Send a loan"}
-        sub={atWar ? `Chance of peace grows with the sum; ${money(ruleSet.economy.guaranteedPeaceLoan)} is certain` : "A gift to a rival's treasury"}
+        title="Send a gift"
+        sub="Money for a rival's treasury"
         treasury={treasury}
         disabled={notYet ?? (!canDiplomacy(gs) ? springOnly : null)}
         onLoan={(amount) => play({ type: "LOAN_POWER", target: owner, amount })}
@@ -236,6 +292,58 @@ function BuyRow({ icon, title, unit, unitLabel, cost, treasury, disabled, onBuy 
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+const PEACE_PAYMENTS = [500_000, 1_000_000, 2_000_000, 4_000_000];
+const PEACE_DEMANDS = [1_000_000, 3_000_000];
+
+function termsLabel(payment: number, mine: boolean): string {
+  if (payment === 0) return "no payment";
+  if (payment > 0) return mine ? `you pay ${money(payment)}` : `they pay you ${money(payment)}`;
+  return mine ? `you demand ${money(-payment)}` : `they demand ${money(-payment)}`;
+}
+
+/** "Spring 1884" for an absolute season index. */
+function seasonLabel(gs: { startYear: number }, abs: number): string {
+  const year = Math.floor(abs / 4);
+  const season = ["Spring", "Summer", "Fall", "Winter"][abs % 4]!;
+  return `${season} ${gs.startYear + year - 1}`;
+}
+
+function PeaceAnswer({ from, payment, disabled }: { from: PowerId; payment: number; disabled: string | null }): React.JSX.Element {
+  const play = useGame((s) => s.play);
+  const ruleSet = useGame((s) => s.ruleSet);
+  return (
+    <div className="buy peace-answer">
+      <div className="buy-head">
+        <span className="action-icon">🕊</span>
+        <span className="action-text">
+          <b>{powerName(ruleSet.powers, from)} offers peace</b>
+          <small>{disabled ?? `Terms: ${termsLabel(payment, false)}.`}</small>
+        </span>
+      </div>
+      {!disabled && (
+        <div className="chips">
+          <button className="chip accept" onClick={() => play({ type: "ANSWER_PEACE", from, accept: true })}>Accept</button>
+          <button className="chip" onClick={() => play({ type: "ANSWER_PEACE", from, accept: false })}>Refuse</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Peace offers waiting for the player, shown on their turn wherever they are on the map. */
+export function PeaceOffers(): React.JSX.Element | null {
+  const gs = useGame((s) => s.gameState);
+  const me = useGame((s) => s.humanPower);
+  if (gs === null || me === null || gs.stage !== "PLAYER" || gs.activePower !== me || gs.winner !== null) return null;
+  const offers = offersTo(gs, me);
+  if (offers.length === 0) return null;
+  return (
+    <div className="peace-offers glass">
+      {offers.map((o) => <PeaceAnswer key={String(o.from)} from={o.from} payment={o.payment} disabled={null} />)}
     </div>
   );
 }

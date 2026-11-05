@@ -83,8 +83,8 @@ export function storyFor(
       return { kind: "war", headline: headline("war", { attacker: pn(e.by), defender: pn(e.against) }, seed), art: ART.war, weight: 60 + mine(e.by, e.against) };
     case "WAR_ENDED":
       return { kind: "peace", headline: headline("peace", { attacker: pn(e.by), defender: pn(e.against) }, seed), art: ART.peace, weight: 55 + mine(e.by, e.against) };
-    case "PEACE_LOAN_FAILED":
-      return { kind: "peace_failed", headline: headline("peace_failed", { attacker: pn(e.by), defender: pn(e.target) }, seed), art: ART.war, weight: 30 + mine(e.by, e.target) };
+    case "PEACE_DECLINED":
+      return { kind: "peace_failed", headline: headline("peace_failed", { attacker: pn(e.offerer), defender: pn(e.by) }, seed), art: ART.war, weight: 30 + mine(e.by, e.offerer) };
     case "SUBVERSION":
       if (!e.coup) return null;
       return { kind: "coup", headline: headline("coup", { attacker: pn(e.by), area: getArea(world, e.area).name }, seed), art: ART.coup, weight: 35 + mine(e.by) };

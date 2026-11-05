@@ -7,14 +7,8 @@ import type { WorldDefinition } from "../world/types.ts";
 import type { Action } from "./actions.ts";
 import type { GameEvent } from "./events.ts";
 import type { AreaState, GameState, IntelReport, PendingMove, PowerState } from "./gameState.ts";
-import {
-  endWar,
-  getAreaState,
-  getPowerState,
-  isAtWar,
-  withArea,
-  withPower,
-} from "./helpers.ts";
+import { answerPeaceAction, canAttackOwner, declareWarAction, offerPeaceAction } from "./diplomacy.ts";
+import { getAreaState, getPowerState, withArea, withPower } from "./helpers.ts";
 import { canBuild, canDiplomacy, canEspionage, canSubvert } from "./legalActions.ts";
 import { endTurnFor } from "./phases.ts";
 import { Rng } from "./rng.ts";
@@ -135,7 +129,6 @@ function fortify(
 
 function loanPower(
   state: GameState,
-  ruleSet: RuleSet,
   from: PowerId,
   target: PowerId,
   amount: number,
@@ -153,20 +146,7 @@ function loanPower(
   let next = withPower(state, fromState);
   next = withPower(next, { ...targetState, treasury: targetState.treasury + amount });
 
-  const events: GameEvent[] = [];
-  if (isAtWar(next, from, target) && amount >= ruleSet.economy.minPeaceLoan) {
-    const rng = new Rng(next.rngState);
-    const chance = Math.min(1, amount / ruleSet.economy.guaranteedPeaceLoan);
-    const success = rng.next() < chance;
-    next = { ...next, rngState: rng.snapshot() };
-    if (success) {
-      next = { ...next, war: endWar(next.war, from, target), tick: next.tick + 1 };
-      events.push({ type: "WAR_ENDED", by: from, against: target });
-    } else {
-      events.push({ type: "PEACE_LOAN_FAILED", by: from, target });
-    }
-  }
-  return { state: next, events };
+  return { state: next, events: [] };
 }
 
 function loanMinor(
@@ -280,6 +260,14 @@ function subvert(
   return { state: next, events };
 }
 
+/** Marching into a great power's land needs a declared war. */
+function requireMayAttack(state: GameState, power: PowerId, to: AreaId): void {
+  const owner = getAreaState(state, to).owner;
+  if (!canAttackOwner(state, power, owner)) {
+    throw new IllegalActionError(`You are not at war with ${String(owner)}; declare war first`);
+  }
+}
+
 function moveArmy(
   state: GameState,
   ruleSet: RuleSet,
@@ -296,6 +284,7 @@ function moveArmy(
   if (!neighborsOf(world, from).includes(to)) {
     throw new IllegalActionError(`Area ${to} is not adjacent to ${from}`);
   }
+  requireMayAttack(state, power, to);
   const maxMovable = src.troops - ruleSet.limits.minGarrison;
   if (troops <= 0 || troops > maxMovable) {
     throw new IllegalActionError(
@@ -335,6 +324,7 @@ function moveFleet(
   if (to === from) {
     throw new IllegalActionError("A fleet must sail to a different port");
   }
+  requireMayAttack(state, power, to);
   if (fleets <= 0 || fleets > src.fleets) {
     throw new IllegalActionError(`Can move 1..${src.fleets} fleets from ${from}, got ${fleets}`);
   }
@@ -386,7 +376,7 @@ export function reduce(
     case "FORTIFY":
       return { state: fortify(state, ruleSet, power, action.area), events: [] };
     case "LOAN_POWER":
-      return loanPower(state, ruleSet, power, action.target, action.amount);
+      return loanPower(state, power, action.target, action.amount);
     case "LOAN_MINOR":
       return { state: loanMinor(state, ruleSet, power, action.area, action.amount), events: [] };
     case "SPY":
@@ -412,6 +402,12 @@ export function reduce(
         ),
         events: [],
       };
+    case "DECLARE_WAR":
+      return declareWarAction(state, ruleSet, power, action.target);
+    case "OFFER_PEACE":
+      return offerPeaceAction(state, power, action.target, action.payment);
+    case "ANSWER_PEACE":
+      return answerPeaceAction(state, ruleSet, power, action.from, action.accept);
     case "END_TURN":
       return { state: endTurnFor(state, ruleSet), events: [] };
     default: {
