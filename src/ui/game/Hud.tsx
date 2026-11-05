@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type React from "react";
 import { calendarYear } from "../../engine/state/gameState.ts";
 import { allAreas, getPowerState, isAtWar } from "../../engine/state/helpers.ts";
@@ -7,7 +7,16 @@ import { isFoundingTurn } from "../../engine/state/phases.ts";
 import { annualIncomeFor } from "../../engine/state/scoring.ts";
 import type { Season } from "../../engine/types.ts";
 import { lookOf, money, powerName } from "../content/powers.ts";
-import { useGame } from "../store.ts";
+import { getNet, netSnapshot, subscribeNet, useGame } from "../store.ts";
+
+/** Online: who plays which nation (empty offline). */
+function useSeatNames(): ReadonlyMap<string, { name: string; online: boolean }> {
+  useSyncExternalStore(subscribeNet, netSnapshot);
+  const net = getNet();
+  const out = new Map<string, { name: string; online: boolean }>();
+  for (const [power, seat] of Object.entries(net?.room?.seats ?? {})) out.set(power, { name: seat.name, online: net!.seatOnline(power) });
+  return out;
+}
 
 const SEASON_ICON: Record<Season, string> = { SPRING: "❀", SUMMER: "☀", FALL: "❦", WINTER: "❄" };
 const SEASON_NAME: Record<Season, string> = { SPRING: "Spring", SUMMER: "Summer", FALL: "Autumn", WINTER: "Winter" };
@@ -73,6 +82,7 @@ export function TopBar(): React.JSX.Element | null {
           </div>
         </div>
       )}
+      <RoomChip />
       <div className="topbar-right">
         <button className="icon-btn" title="How to play" onClick={() => setPanel("guide")}>?</button>
         <button className="icon-btn" title="Menu" onClick={() => setPanel("menu")}>☰</button>
@@ -86,6 +96,7 @@ export function Standings(): React.JSX.Element | null {
   const me = useGame((s) => s.humanPower);
   const ruleSet = useGame((s) => s.ruleSet);
   const [open, setOpen] = useState(true);
+  const names = useSeatNames();
   if (gs === null) return null;
   const counts = new Map<string, number>();
   for (const a of allAreas(gs)) if (a.owner !== null) counts.set(String(a.owner), (counts.get(String(a.owner)) ?? 0) + 1);
@@ -110,7 +121,10 @@ export function Standings(): React.JSX.Element | null {
                 <img src={lookOf(String(id)).crest} alt="" />
                 <div className="race-body">
                   <div className="race-line">
-                    <span className="race-name">{def.name}{id === me ? " (you)" : ""}</span>
+                    <span className="race-name">
+                      {def.name}{id === me ? " (you)" : ""}
+                      {names.has(String(id)) && id !== me && <span className="player-name"> · {names.get(String(id))!.name}{names.get(String(id))!.online ? "" : " (away)"}</span>}
+                    </span>
                     {war && <span className="war-tag" title="At war with you">⚔</span>}
                     {active && <span className="thinking">{id === me ? "your turn" : "thinking…"}</span>}
                     <b>{st.eliminated ? "out" : st.score}</b>
@@ -144,8 +158,10 @@ export function TurnDock(): React.JSX.Element | null {
   const undo = useGame((s) => s.undo);
   const canUndo = useGame((s) => s.canUndo);
   const move = useGame((s) => s.move);
-  if (gs === null || me === null) return null;
-  const yours = gs.stage === "PLAYER" && gs.activePower === me && gs.winner === null;
+  const names = useSeatNames();
+  if (gs === null) return null;
+  const yours = me !== null && gs.stage === "PLAYER" && gs.activePower === me && gs.winner === null;
+  const who = gs.activePower === null ? undefined : names.get(String(gs.activePower));
   const myOrders = gs.pending.filter((m) => m.power === me).length;
   let hint = SEASON_HINT[gs.season];
   if (isFoundingTurn(gs)) hint = "Your first season: march, spy and bribe now. Building starts next spring.";
@@ -171,7 +187,7 @@ export function TurnDock(): React.JSX.Element | null {
           ) : gs.stage === "COMBAT" ? (
             <><span className="spinner" /> Armies clash across the world…</>
           ) : (
-            <><span className="spinner" /> {powerName(ruleSet.powers, gs.activePower)} is making plans…</>
+            <><span className="spinner" /> {who ? `${who.name} (${powerName(ruleSet.powers, gs.activePower)})` : powerName(ruleSet.powers, gs.activePower)} is making plans…</>
           )}
         </div>
       )}
@@ -241,6 +257,17 @@ export function SeasonBanner(): React.JSX.Element | null {
     <div className="season-banner" key={banner.id}>
       <span className={`season-icon s-${banner.season.toLowerCase()}`}>{SEASON_ICON[banner.season]}</span>
       <h2>{SEASON_NAME[banner.season]} {banner.year}</h2>
+    </div>
+  );
+}
+
+function RoomChip(): React.JSX.Element | null {
+  useSyncExternalStore(subscribeNet, netSnapshot);
+  const code = getNet()?.code;
+  if (!code) return null;
+  return (
+    <div className="plate" title="Online room code. Friends can watch with it.">
+      <span className="room-chip">{code}</span>
     </div>
   );
 }

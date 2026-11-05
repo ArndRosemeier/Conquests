@@ -142,6 +142,7 @@ export function TitleScreen(): React.JSX.Element {
   const goNewGame = useGame((s) => s.goNewGame);
   const loadGame = useGame((s) => s.loadGame);
   const setPanel = useGame((s) => s.setPanel);
+  const goOnline = useGame((s) => s.goOnline);
   const [latest, setLatest] = useState<GameState | null>(null);
   const [news, setNews] = useState<string[]>([]);
   const [whirl, setWhirl] = useState(0);
@@ -214,6 +215,7 @@ export function TitleScreen(): React.JSX.Element {
             </button>
           )}
           <div className="title-row">
+            <button className="btn" onClick={goOnline}>Play online</button>
             <button className="btn" onClick={() => setPanel("saves")}>Load game</button>
             <button className="btn" onClick={() => setPanel("guide")}>How to play</button>
             <button className="btn" onClick={() => setPanel("settings")}>Settings</button>

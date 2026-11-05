@@ -101,9 +101,11 @@ export function GameMenu(): React.JSX.Element | null {
   const panel = useGame((s) => s.panel);
   const setPanel = useGame((s) => s.setPanel);
   const goTitle = useGame((s) => s.goTitle);
+  const mode = useGame((s) => s.mode);
   const close = (): void => setPanel("none");
   useEscape(close);
   if (panel !== "menu") return null;
+  const leaveText = mode === "local" ? "Leave this game? It is autosaved every season." : "Leave this online game? The computer plays your nation until you return through the invite link.";
   return (
     <div className="overlay" onClick={close}>
       <div className="modal glass menu-modal" onClick={(e) => e.stopPropagation()}>
@@ -112,7 +114,7 @@ export function GameMenu(): React.JSX.Element | null {
         <button className="btn wide" onClick={() => setPanel("saves")}>Save or load</button>
         <button className="btn wide" onClick={() => setPanel("guide")}>How to play</button>
         <button className="btn wide" onClick={() => setPanel("settings")}>Settings</button>
-        <button className="btn ghost wide" onClick={() => { if (window.confirm("Leave this game? It is autosaved every season.")) goTitle(); }}>Quit to title</button>
+        <button className="btn ghost wide" onClick={() => { if (window.confirm(leaveText)) goTitle(); }}>Quit to title</button>
       </div>
     </div>
   );

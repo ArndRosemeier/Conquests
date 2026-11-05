@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createAI, DEFAULT_AI_VERSION } from "../controllers/ai/factory.ts";
+import { BUILTIN_PERSONAS } from "../controllers/ai/persona.ts";
 import type { Persona, PersonaKnobs } from "../controllers/ai/persona.ts";
 import { HumanController } from "../controllers/humanController.ts";
 import type { PlayerController } from "../controllers/types.ts";
@@ -24,6 +25,11 @@ import { ART, storyFor, TIPS } from "./content/herald.ts";
 import type { Story } from "./content/herald.ts";
 import { money, powerColor, powerName, troops as troopsLabel } from "./content/powers.ts";
 import { pushAutosave, putManualSave } from "./persistence.ts";
+import { OnlineRoom } from "../net/online.ts";
+import type { Hub, Intent } from "../net/online.ts";
+import type { GameSettings } from "../net/protocol.ts";
+import { SeatController } from "../net/seatController.ts";
+import { reduce } from "../engine/state/reducer.ts";
 
 export interface NewGameConfig {
   readonly scenarioId: string;
@@ -56,7 +62,9 @@ function assignPersonas(config: NewGameConfig, aiPowers: readonly PowerId[]): Ma
   return out;
 }
 
-export type Screen = "title" | "newgame" | "game";
+export type Screen = "title" | "newgame" | "game" | "online";
+/** local: everything runs here. host: this browser runs an online game. client: someone else hosts. */
+export type Mode = "local" | "host" | "client";
 export type MoveMode = "army" | "fleet";
 export type Panel = "none" | "guide" | "settings" | "saves" | "menu";
 export type AiSpeed = "relaxed" | "normal" | "fast";
@@ -119,6 +127,7 @@ interface StoreState {
   readonly aiSpeed: AiSpeed;
   readonly canUndo: boolean;
   readonly spectating: boolean;
+  readonly mode: Mode;
 
   goTitle: () => void;
   goNewGame: (preset?: PowerId | null) => void;
@@ -139,10 +148,34 @@ interface StoreState {
   setAiSpeed: (speed: AiSpeed) => void;
   consumeFx: (ids: readonly number[]) => void;
   spectate: () => void;
+  goOnline: () => void;
+  /** Open an online room (we host). */
+  hostOnline: (name: string, settings: GameSettings, power: PowerId) => Promise<void>;
+  joinOnline: (name: string, code: string) => Promise<void>;
+  /** Host: start the online game with the seats claimed so far. */
+  startOnline: () => void;
 }
 
 let runner: GameRunner | null = null;
 let human: HumanController | null = null;
+let net: OnlineRoom | null = null;
+let seats = new Map<string, SeatController>();
+
+const netListeners = new Set<() => void>();
+let netVersion = 0;
+const emitNet = (): void => {
+  netVersion += 1;
+  for (const fn of netListeners) fn();
+};
+
+/** The online room this browser is in, if any (for the lobby UI). */
+export const getNet = (): OnlineRoom | null => net;
+/** For useSyncExternalStore: changes whenever the room or its contents change. */
+export const subscribeNet = (fn: () => void): (() => void) => {
+  netListeners.add(fn);
+  return () => netListeners.delete(fn);
+};
+export const netSnapshot = (): number => netVersion;
 let undoStack: GameState[] = [];
 let seq = 1;
 const nextId = (): number => (seq += 1);
@@ -172,6 +205,7 @@ export const useGame = create<StoreState>((set, get) => {
   let stories: Story[] = [];
   let incomeThisYear = 0;
   let lastBannerKey = "";
+  let lastTurnCall = "";
 
   const toast = (t: Omit<Toast, "id">): void => {
     const item = { ...t, id: nextId() };
@@ -191,7 +225,7 @@ export const useGame = create<StoreState>((set, get) => {
   };
 
   const maybeAutosave = (gs: GameState, me: PowerId | null): void => {
-    if (me === null) return;
+    if (me === null || get().mode !== "local") return;
     if (gs.stage === "PLAYER" && gs.activePower === me) {
       const key = `${gs.year}-${gs.season}`;
       if (key !== autosaveKey) {
@@ -300,6 +334,14 @@ export const useGame = create<StoreState>((set, get) => {
   /** React to the state moving on: season banners, the yearly newspaper, music. */
   const onState = (gs: GameState): void => {
     const me = get().humanPower;
+    // Online, say when it is the player's turn: they may have been looking elsewhere.
+    if (get().mode !== "local" && me !== null && gs.stage === "PLAYER" && gs.activePower === me && gs.winner === null) {
+      const key = `${gs.year}-${gs.season}`;
+      if (key !== lastTurnCall) {
+        lastTurnCall = key;
+        sound.say("yourturn");
+      }
+    }
     const bannerKey = `${gs.year}-${gs.season}`;
     if (gs.stage === "PLAYER" && bannerKey !== lastBannerKey && gs.winner === null) {
       lastBannerKey = bannerKey;
@@ -330,16 +372,121 @@ export const useGame = create<StoreState>((set, get) => {
     sound.play("drums", 0.5);
   };
 
-  const launch = (state: GameState): void => {
+  /** Host: a seated player in another browser wants something. */
+  const onIntent = (power: string, intent: Intent, from: number): void => {
+    const gs = runner?.state;
+    if (!runner || !gs || gs.stage !== "PLAYER" || String(gs.activePower) !== power) return;
+    const seat = seats.get(power);
+    if (!seat?.isWaiting) return;
+    if (intent.k === "end") {
+      undoStack = [];
+      seat.finishTurn();
+    } else if (intent.k === "undo") {
+      const prev = undoStack.pop();
+      if (prev !== undefined) runner.replace(prev);
+    } else {
+      const before = undoStack;
+      undoStack = intent.action.type === "SPY" || intent.action.type === "SUBVERT" ? [] : [...undoStack, gs];
+      try {
+        runner.apply(intent.action);
+      } catch (e) {
+        undoStack = before;
+        net?.refuse(from, e instanceof Error ? e.message : String(e));
+      }
+    }
+  };
+
+  const openNet = (name: string): void => {
+    net?.close();
+    // Development: tests can hand in an in-memory hub (see src/net/fakeHub.ts).
+    const devHub = import.meta.env.DEV ? (window as unknown as { conquestsHub?: (name: string) => Hub }).conquestsHub?.(name) : undefined;
+    const room = new OnlineRoom(devHub ? { name, hub: devHub } : { name });
+    net = room;
+    room.subscribe(emitNet);
+    emitNet();
+    room.onNotice = (text) => toast({ title: text, tone: "info" });
+    room.onIntent = onIntent;
+    room.onSeatsChanged = () => {
+      for (const seat of seats.values()) void seat.takeOver();
+    };
+    room.onGame = (gs, events, fresh) => {
+      if (net !== room || room.isHost) return;
+      if (fresh || get().screen !== "game") {
+        launchClient(gs);
+        return;
+      }
+      const prev = get().gameState;
+      set({ gameState: gs, canUndo: room.room?.undo === room.seat && room.seat !== null });
+      if (prev !== null && (prev.activePower !== gs.activePower || prev.stage !== gs.stage)) set({ ...CLEARED });
+      if (events.length > 0) digest(gs, events);
+      onState(gs);
+    };
+    room.onBecomeHost = () => {
+      if (net !== room || !room.game || room.room?.phase !== "playing") return;
+      launch(room.game, "host", get().screen === "game");
+    };
+  };
+
+  /** Client: show a game someone else hosts. */
+  const launchClient = (gs: GameState): void => {
     runner?.stop();
-    undoStack = [];
+    runner = null;
+    human = null;
     stories = [];
-    incomeThisYear = 0;
     lastBannerKey = "";
+    const me = net?.seat ?? null;
+    const humanPower = me === null ? null : (Object.values(gs.powers).find((p) => String(p.id) === me)?.id ?? null);
+    const home = humanPower === null ? undefined : Object.values(gs.areas).find((a) => a.supplyCenterOf === humanPower && a.owner === humanPower);
+    set({
+      screen: "game",
+      mode: "client",
+      gameState: gs,
+      humanPower,
+      focus: home === undefined ? null : { area: home.id, n: Date.now() },
+      log: [],
+      toasts: [],
+      fx: [],
+      herald: null,
+      banner: null,
+      panel: "none",
+      canUndo: false,
+      spectating: humanPower === null,
+      ...CLEARED,
+    });
+    onState(gs);
+    sound.setMood("campaign");
+  };
+
+  const launch = (state: GameState, mode: Mode = "local", keepUi = false): void => {
+    runner?.stop();
+    runner = null;
+    undoStack = [];
+    seats = new Map();
+    if (!keepUi) {
+      stories = [];
+      incomeThisYear = 0;
+      lastBannerKey = "";
+    }
     const controllers = new Map<PowerId, PlayerController>();
     let humanPower: PowerId | null = null;
     human = null;
+    const mySeat = net?.seat ?? null;
     for (const p of Object.values(state.powers)) {
+      if (mode !== "local") {
+        if (p.control === "human" && String(p.id) === mySeat) {
+          human = new HumanController();
+          controllers.set(p.id, human);
+          humanPower = p.id;
+        } else if (p.control === "human") {
+          const ai = createAI(DEFAULT_AI_VERSION, CLASSIC_RULESET, CLASSIC_WORLD);
+          const ctl = new SeatController(() => net?.seatOnline(String(p.id)) ?? false, ai, () => runner?.state ?? state);
+          seats.set(String(p.id), ctl);
+          controllers.set(p.id, ctl);
+        } else if (p.control === "ai") {
+          controllers.set(p.id, createAI(DEFAULT_AI_VERSION, CLASSIC_RULESET, CLASSIC_WORLD));
+        }
+        continue;
+      }
       if (p.control === "human") {
         human ??= new HumanController();
         controllers.set(p.id, human);
@@ -350,8 +497,11 @@ export const useGame = create<StoreState>((set, get) => {
     }
     // Open the map over the player's home rather than the whole world.
     const home = humanPower === null ? undefined : Object.values(state.areas).find((a) => a.supplyCenterOf === humanPower && a.owner === humanPower);
-    set({
+    if (keepUi) {
+      set({ screen: "game", gameState: state, humanPower, mode, canUndo: false });
+    } else set({
       screen: "game",
+      mode,
       gameState: state,
       humanPower,
       focus: home === undefined ? null : { area: home.id, n: Date.now() },
@@ -379,11 +529,12 @@ export const useGame = create<StoreState>((set, get) => {
         if (events.length > 0) digest(s, events);
         onState(s);
         maybeAutosave(s, get().humanPower);
+        if (mode === "host") net?.publish(s, events, undoStack.length > 0 && s.activePower !== null ? String(s.activePower) : null);
       },
     });
     onState(state);
     maybeAutosave(state, humanPower);
-    sound.setMood("campaign");
+    if (!keepUi) sound.setMood("campaign");
     void runner.run().catch((e) => {
       console.error(e);
       toast({ title: "The game engine stopped", body: String(e instanceof Error ? e.message : e), tone: "bad" });
@@ -409,8 +560,12 @@ export const useGame = create<StoreState>((set, get) => {
     aiSpeed: loadSpeed(),
     canUndo: false,
     spectating: false,
+    mode: "local",
 
     goTitle: () => {
+      net?.close();
+      net = null;
+      emitNet();
       runner?.stop();
       runner = null;
       human = null;
@@ -459,19 +614,32 @@ export const useGame = create<StoreState>((set, get) => {
     },
 
     play: (action) => {
-      const { gameState } = get();
-      if (runner === null || gameState === null) return false;
-      try {
-        runner.apply(action);
-      } catch (e) {
-        const msg = e instanceof IllegalActionError ? e.message : String(e);
-        toast({ title: "Not possible", body: msg, tone: "bad" });
-        return false;
+      const { gameState, mode } = get();
+      if (gameState === null) return false;
+      if (mode === "client") {
+        // Check locally for an instant answer; the host applies it for real.
+        try {
+          reduce(gameState, action, CLASSIC_RULESET, CLASSIC_WORLD);
+        } catch (e) {
+          toast({ title: "Not possible", body: e instanceof Error ? e.message : String(e), tone: "bad" });
+          return false;
+        }
+        net?.act(action);
+      } else {
+        if (runner === null) return false;
+        // Spying and bribing reveal or roll something, so they cannot be taken back.
+        const before = undoStack;
+        undoStack = action.type === "SPY" || action.type === "SUBVERT" ? [] : [...undoStack, gameState];
+        try {
+          runner.apply(action);
+        } catch (e) {
+          undoStack = before;
+          const msg = e instanceof IllegalActionError ? e.message : String(e);
+          toast({ title: "Not possible", body: msg, tone: "bad" });
+          return false;
+        }
+        set({ canUndo: undoStack.length > 0 });
       }
-      // Spying and bribing reveal or roll something, so they cannot be taken back.
-      if (action.type === "SPY" || action.type === "SUBVERT") undoStack = [];
-      else undoStack.push(gameState);
-      set({ canUndo: undoStack.length > 0 });
       const area = "area" in action ? action.area : "to" in action ? action.to : null;
       switch (action.type) {
         case "BUILD_ARMY":
@@ -502,6 +670,12 @@ export const useGame = create<StoreState>((set, get) => {
     },
 
     undo: () => {
+      if (get().mode === "client") {
+        net?.undo();
+        sound.play("click");
+        set({ ...CLEARED });
+        return;
+      }
       const prev = undoStack.pop();
       if (prev === undefined || runner === null) return;
       runner.replace(prev);
@@ -510,6 +684,12 @@ export const useGame = create<StoreState>((set, get) => {
     },
 
     endTurn: () => {
+      if (get().mode === "client") {
+        net?.endTurn();
+        sound.play("stamp", 0.7);
+        set({ canUndo: false, ...CLEARED });
+        return;
+      }
       undoStack = [];
       sound.play("stamp", 0.7);
       human?.finishTurn();
@@ -565,6 +745,46 @@ export const useGame = create<StoreState>((set, get) => {
     consumeFx: (ids) => set((s) => ({ fx: s.fx.filter((f) => !ids.includes(f.id)) })),
 
     spectate: () => set({ spectating: true }),
+
+    goOnline: () => set({ screen: "online", panel: "none" }),
+
+    hostOnline: async (name, settings, power) => {
+      openNet(name);
+      await net!.host(settings, String(power));
+    },
+
+    joinOnline: async (name, code) => {
+      openNet(name);
+      await net!.join(code);
+    },
+
+    startOnline: () => {
+      const room = net?.room;
+      if (!net || !net.isHost || !room || room.phase !== "lobby") return;
+      const ruleSet = CLASSIC_RULESET;
+      const controls = new Map<PowerId, PowerControlConfig>();
+      const pool = BUILTIN_PERSONAS;
+      ruleSet.playOrder.forEach((power, i) => {
+        controls.set(
+          power,
+          room.seats[String(power)] !== undefined
+            ? { control: "human", persona: null }
+            : { control: "ai", persona: pool[(i + room.settings.seed) % pool.length]!.knobs },
+        );
+      });
+      const initial = createGame({
+        ruleSet,
+        world: CLASSIC_WORLD,
+        home: CLASSIC_HOME,
+        scenario: getScenario(room.settings.scenarioId),
+        controls,
+        winningScore: room.settings.winningScore,
+        seed: room.settings.seed,
+      });
+      net.start(initial);
+      launch(initial, "host");
+      sound.say("welcome");
+    },
   };
 });
 

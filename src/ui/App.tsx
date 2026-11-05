@@ -5,11 +5,18 @@ import { GameScreen } from "./game/GameScreen.tsx";
 import { Guide, Settings } from "./game/Overlays.tsx";
 import { SaveLoad } from "./game/SaveLoad.tsx";
 import { NewGameScreen } from "./newgame/NewGameScreen.tsx";
+import { inviteCode, OnlineScreen } from "./online/OnlineScreen.tsx";
 import { useGame } from "./store.ts";
 import { TitleScreen } from "./title/TitleScreen.tsx";
 
 export function App(): React.JSX.Element {
   const screen = useGame((s) => s.screen);
+  const goOnline = useGame((s) => s.goOnline);
+
+  // An invite link (?room=CODE) opens the online screen with the code filled in.
+  useEffect(() => {
+    if (inviteCode()) goOnline();
+  }, [goOnline]);
 
   // Browsers only allow sound after a user gesture.
   useEffect(() => {
@@ -25,7 +32,7 @@ export function App(): React.JSX.Element {
   if (screen === "game") return <GameScreen />;
   return (
     <>
-      {screen === "title" ? <TitleScreen /> : <NewGameScreen />}
+      {screen === "title" ? <TitleScreen /> : screen === "online" ? <OnlineScreen /> : <NewGameScreen />}
       <SaveLoad />
       <Guide />
       <Settings />

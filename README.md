@@ -29,6 +29,32 @@ npm run balance    # headless all-AI games, win rate per great power
 npm run gen:world  # regenerate the precomputed world map
 ```
 
+## Playing online
+
+Online games run on the GameHub relay at games.futuremagic.de (app id `conquests`). The build needs
+the game's key; put it in `.env.local` (git ignores it), next to `package.json`:
+
+```bash
+VITE_GAMEHUB_KEY=ghk_conquests_...
+# optional: VITE_GAMEHUB_URL=https://games.futuremagic.de
+```
+
+Without a key the game still works offline and the Online screen says that online play is not set up.
+
+How it works (`src/net/`):
+
+- One player hosts. The host's browser runs the game; the others send what they want to do
+  (an order, end turn, undo) and the host checks and applies it, then publishes the new state to
+  everyone. State is gzipped (about 4 KB) and batched, so fast computer turns stay cheap.
+- In the lobby everyone takes a nation; the computer plays the rest. Invite links are `?room=CODE`.
+- A player who drops out is replaced by the computer until they come back (reload or reopen the
+  link in the same tab: the seat token lives in that tab). If the host leaves, the next player's
+  browser takes over the game.
+- Every browser has the whole game state, so a player who opens the developer tools could peek at
+  hidden garrisons. That is the usual trade-off for a host-run game on a plain relay.
+- `src/net/online.test.ts` plays a lobby, a turn and a host hand-over against an in-memory relay
+  (`src/net/fakeHub.ts`).
+
 ## How a turn works
 
 - A year has four seasons. Every power acts once per season, in a fixed order, then all moves resolve
