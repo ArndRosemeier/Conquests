@@ -40,18 +40,24 @@ export type GameEvent =
       readonly from: PowerId | null;
       readonly to: PowerId | null;
     }
-  /** `by` attacked `against`; the two are now at war. */
+  /** `by` declared war on `against`, losing `reputationLoss` reputation. */
   | {
       readonly type: "WAR_DECLARED";
       readonly by: PowerId;
       readonly against: PowerId;
+      readonly reputationLoss: number;
     }
+  /** `against` accepted the peace `by` offered; `payment` went from `by` to `against` (negative: the other way). */
   | {
       readonly type: "WAR_ENDED";
       readonly by: PowerId;
       readonly against: PowerId;
+      readonly payment: number;
     }
-  | { readonly type: "PEACE_LOAN_FAILED"; readonly by: PowerId; readonly target: PowerId }
+  | { readonly type: "PEACE_OFFERED"; readonly by: PowerId; readonly to: PowerId; readonly payment: number }
+  | { readonly type: "PEACE_DECLINED"; readonly by: PowerId; readonly offerer: PowerId }
+  /** An attack found the target held by a power it is not at war with, and turned back. */
+  | { readonly type: "ATTACK_CALLED_OFF"; readonly power: PowerId; readonly area: AreaId; readonly owner: PowerId }
   /** A power lost its last area and is out of the game. */
   | { readonly type: "POWER_ELIMINATED"; readonly power: PowerId }
   /** Annual payout at the start of spring. */

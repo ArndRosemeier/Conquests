@@ -57,10 +57,6 @@ export interface CombatRules {
 }
 
 export interface EconomyRules {
-  /** Loan amount that guarantees ending a war with a computer power. */
-  readonly guaranteedPeaceLoan: number;
-  /** Minimum loan that has any chance of ending a war. */
-  readonly minPeaceLoan: number;
   /** Troops a neutral minor raises per dollar of economic aid it receives. */
   readonly minorTroopsPerDollar: number;
 }
@@ -98,6 +94,24 @@ export interface SubversionRules {
   readonly coupGarrison: number;
 }
 
+/** War, peace and reputation. Reputation runs from 0 (pariah) to `reputationMax`. */
+export interface DiplomacyRules {
+  /** Seasons of truce after every peace treaty, during which war cannot be declared. */
+  readonly truceSeasons: number;
+  /** Reputation every power starts with; yearly recovery stops here. */
+  readonly reputationStart: number;
+  readonly reputationMax: number;
+  /** Reputation lost for declaring war. */
+  readonly declareWarCost: number;
+  /** Reduced cost when the victim's own reputation is below `pariahBelow`. */
+  readonly declareWarOnPariahCost: number;
+  readonly pariahBelow: number;
+  /** Reputation regained each spring, up to `reputationStart`. */
+  readonly recoveryPerYear: number;
+  /** War balance points for each battle won against the enemy (plus the VP of land taken). */
+  readonly warPointsPerBattle: number;
+}
+
 /**
  * The complete, changeable rule configuration. Swap this object to retune the
  * game, add powers, or model an entirely different world's economy.
@@ -113,4 +127,5 @@ export interface RuleSet {
   readonly economy: EconomyRules;
   readonly victory: VictoryRules;
   readonly subversion: SubversionRules;
+  readonly diplomacy: DiplomacyRules;
 }

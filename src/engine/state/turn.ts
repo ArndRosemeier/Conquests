@@ -4,6 +4,7 @@ import { resolveCombat } from "./combat.ts";
 import type { GameEvent } from "./events.ts";
 import type { GameState } from "./gameState.ts";
 import { allAreas, withPower } from "./helpers.ts";
+import { recoverReputation } from "./diplomacy.ts";
 import { beginNextTurn } from "./phases.ts";
 import { annualIncomeFor, applyAnnualEconomy, checkWinner } from "./scoring.ts";
 
@@ -40,6 +41,7 @@ export function advanceAfterCombat(
       if (amount > 0) events.push({ type: "INCOME", power, amount });
     }
     next = applyAnnualEconomy(next, ruleSet, world).state;
+    next = recoverReputation(next, ruleSet);
   }
 
   const winner = checkWinner(next);

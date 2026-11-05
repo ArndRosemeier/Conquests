@@ -3,6 +3,7 @@ import type { WorldDefinition } from "../../engine/world/types.ts";
 import type { PlayerController } from "../types.ts";
 import { AIController } from "./aiController.ts";
 import { AIControllerV2 } from "./aiControllerV2.ts";
+import { DiplomatAI } from "./diplomat.ts";
 
 /**
  * Which AI implementation drives a seat. "v2" is the frozen baseline kept as a
@@ -26,7 +27,9 @@ export function createAI(
   ruleSet: RuleSet,
   world: WorldDefinition,
 ): PlayerController {
-  return version === "v2"
+  const planner = version === "v2"
     ? new AIControllerV2(ruleSet, world)
     : new AIController(ruleSet, world);
+  // Both planners share one diplomatic layer: war declarations and peace.
+  return new DiplomatAI(planner, ruleSet, world);
 }

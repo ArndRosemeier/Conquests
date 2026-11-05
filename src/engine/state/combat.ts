@@ -6,11 +6,10 @@ import type { WorldDefinition } from "../world/types.ts";
 import type { GameEvent } from "./events.ts";
 import type { AreaState, GameState, PendingMove } from "./gameState.ts";
 import {
-  declareWar,
   getAreaState,
-  getPowerState,
   withArea,
 } from "./helpers.ts";
+import { addWarGains, canAttackOwner } from "./diplomacy.ts";
 import { Rng } from "./rng.ts";
 import { addBattlePoints, changeControl } from "./scoring.ts";
 
@@ -126,16 +125,6 @@ function returnFleetsHome(
   return state;
 }
 
-function ensureWar(state: GameState, attacker: PowerId, defender: PowerId | null, ctx: Ctx): GameState {
-  if (defender === null || defender === attacker) return state;
-  const defState = getPowerState(state, defender);
-  // Only powers actually go to war; neutral-controlled majors act like minors.
-  if (defState.control === "neutral") return state;
-  if ((state.war[String(defender)] ?? []).includes(attacker)) return state;
-  ctx.events.push({ type: "WAR_DECLARED", by: attacker, against: defender });
-  return { ...state, war: declareWar(state.war, attacker, defender) };
-}
-
 /** Return each wave's share of the survivors to the area it came from (if still held). */
 function returnSurvivorsHome(
   state: GameState,
@@ -179,12 +168,14 @@ function occupy(
     fleets,
     fortified: false,
   });
+  const taken = getAreaState(state, area).victoryValue;
   const changed = changeControl(next, area, power, true);
   next = changed.state;
   ctx.events.push(...changed.events);
   next = addBattlePoints(next, power, ctx.ruleSet.victory.pointsPerBattleWon);
   if (defenderOwner !== null) {
     next = addBattlePoints(next, defenderOwner, -ctx.ruleSet.victory.pointsPerBattleLost);
+    next = addWarGains(next, power, defenderOwner, ctx.ruleSet.diplomacy.warPointsPerBattle + taken);
   }
   return next;
 }
@@ -193,6 +184,7 @@ function repelled(state: GameState, ctx: Ctx, power: PowerId, defenderOwner: Pow
   let next = addBattlePoints(state, power, -ctx.ruleSet.victory.pointsPerBattleLost);
   if (defenderOwner !== null) {
     next = addBattlePoints(next, defenderOwner, ctx.ruleSet.victory.pointsPerBattleWon);
+    next = addWarGains(next, defenderOwner, power, ctx.ruleSet.diplomacy.warPointsPerBattle);
   }
   return next;
 }
@@ -219,7 +211,7 @@ function resolveLandAssault(state: GameState, legs: readonly PendingMove[], ctx:
     ctx.ruleSet.combat.rounds,
     ctx.rng,
   );
-  let next = ensureWar(state, power, defenderOwner, ctx);
+  let next = state;
   if (battle.attackerWon) {
     next = occupy(next, ctx, power, to, defenderOwner, battle.attackerSurvivors, target.fleets);
   } else {
@@ -265,7 +257,6 @@ function resolveSeaAssault(state: GameState, move: PendingMove, ctx: Ctx): GameS
       ctx.rng,
     );
     survivingFleets = naval.attackerSurvivors;
-    next = ensureWar(next, move.power, defenderOwner, ctx);
 
     if (!naval.attackerWon) {
       // Repelled at sea: fleets limp home; troops drown unless home is close by.
@@ -306,7 +297,6 @@ function resolveSeaAssault(state: GameState, move: PendingMove, ctx: Ctx): GameS
     ctx.ruleSet.combat.rounds,
     ctx.rng,
   );
-  next = ensureWar(next, move.power, defenderOwner, ctx);
   if (battle.attackerWon) {
     next = occupy(next, ctx, move.power, move.to, defenderOwner, battle.attackerSurvivors, survivingFleets);
   } else {
@@ -390,8 +380,18 @@ export function resolveCombat(
   }
 
   for (const assault of groupAssaults(hostile, ruleSet)) {
-    if (getAreaState(next, assault.to).owner === assault.power) {
+    const owner = getAreaState(next, assault.to).owner;
+    if (owner === assault.power) {
       for (const leg of assault.legs) next = applyReinforcement(next, leg);
+      continue;
+    }
+    if (owner !== null && !canAttackOwner(next, assault.power, owner)) {
+      // The target changed hands, or peace was made, after the order: turn back.
+      for (const leg of assault.legs) {
+        next = returnTroopsHome(next, assault.power, leg.from, leg.troops);
+        if (leg.fleets > 0) next = returnFleetsHome(next, assault.power, leg.from, leg.fleets);
+      }
+      ctx.events.push({ type: "ATTACK_CALLED_OFF", power: assault.power, area: assault.to, owner });
       continue;
     }
     next = assault.bySea

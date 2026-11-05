@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type React from "react";
 import { calendarYear } from "../../engine/state/gameState.ts";
+import { reputationOf, truceUntil } from "../../engine/state/diplomacy.ts";
 import { allAreas, getPowerState, isAtWar } from "../../engine/state/helpers.ts";
 import { canBuild } from "../../engine/state/legalActions.ts";
 import { isFoundingTurn } from "../../engine/state/phases.ts";
@@ -116,6 +117,7 @@ export function Standings(): React.JSX.Element | null {
           {rows.map(({ id, def, st }) => {
             const active = gs.activePower === id && gs.stage === "PLAYER";
             const war = me !== null && id !== me && isAtWar(gs, me, id);
+            const truce = me !== null && id !== me && truceUntil(gs, me, id) !== null;
             return (
               <li key={String(id)} className={`${id === me ? "you" : ""}${st.eliminated ? " out" : ""}${active ? " active" : ""}`} style={{ ["--c" as string]: def.color }}>
                 <img src={lookOf(String(id)).crest} alt="" />
@@ -126,13 +128,14 @@ export function Standings(): React.JSX.Element | null {
                       {names.has(String(id)) && id !== me && <span className="player-name"> · {names.get(String(id))!.name}{names.get(String(id))!.online ? "" : " (away)"}</span>}
                     </span>
                     {war && <span className="war-tag" title="At war with you">⚔</span>}
+                    {truce && <span className="war-tag" title="Truce with you">🕊</span>}
                     {active && <span className="thinking">{id === me ? "your turn" : "thinking…"}</span>}
                     <b>{st.eliminated ? "out" : st.score}</b>
                   </div>
                   <div className="race-bar">
                     <div style={{ width: `${Math.max(0, Math.min(100, (st.score / goal) * 100))}%` }} />
                   </div>
-                  <small>{counts.get(String(id)) ?? 0} territories</small>
+                  <small>{counts.get(String(id)) ?? 0} territories · reputation {reputationOf(gs, ruleSet, id)}</small>
                 </div>
               </li>
             );

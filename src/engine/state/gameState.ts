@@ -52,6 +52,10 @@ export interface PersonaKnobs {
   readonly reserves: number;
   /** Bias toward overseas projection: low = continental, high = ships troops abroad. */
   readonly naval: number;
+  /** Cares about reputation: high = rarely starts wars, keeps its word. */
+  readonly honor: number;
+  /** Pounces on weak or distracted neighbours. */
+  readonly opportunism: number;
 }
 
 /** Dynamic state of a single major power. */
@@ -88,6 +92,17 @@ export interface PendingMove {
 
 /** War relationships: warTable[a] contains every power a considers itself at war with. */
 export type WarTable = Readonly<Record<string, readonly PowerId[]>>;
+
+/**
+ * An offer to end a war, waiting for the other side's answer. `payment` is what
+ * the offerer pays on acceptance; a negative payment is a demand for tribute.
+ * It lapses when the offerer's next turn begins.
+ */
+export interface PeaceOffer {
+  readonly from: PowerId;
+  readonly to: PowerId;
+  readonly payment: number;
+}
 
 /**
  * A single espionage snapshot: what a power learned about an area at the moment
@@ -136,6 +151,15 @@ export interface GameState {
   readonly areas: Readonly<Record<string, AreaState>>;
   readonly pending: readonly PendingMove[];
   readonly war: WarTable;
+  /** Truces after peace treaties, keyed by pairKey: the first absolute season war is allowed again. */
+  readonly truces: Readonly<Record<string, number>>;
+  /** Absolute season each current war started, keyed by pairKey. */
+  readonly warSince: Readonly<Record<string, number>>;
+  /** War balance: points `a` has won against `b` in their current war, keyed "a>b". */
+  readonly warGains: Readonly<Record<string, number>>;
+  /** Each power's standing in the eyes of the world (see DiplomacyRules). */
+  readonly reputation: Readonly<Record<string, number>>;
+  readonly peaceOffers: readonly PeaceOffer[];
   /** What each power has learned about foreign garrisons through spying. */
   readonly intel: IntelTable;
   readonly rngState: number;

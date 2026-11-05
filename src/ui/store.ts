@@ -11,6 +11,7 @@ import type { Action } from "../engine/state/actions.ts";
 import type { GameEvent } from "../engine/state/events.ts";
 import { calendarYear } from "../engine/state/gameState.ts";
 import type { GameState } from "../engine/state/gameState.ts";
+import { canAttackOwner } from "../engine/state/diplomacy.ts";
 import { isAtWar } from "../engine/state/helpers.ts";
 import { Rng } from "../engine/state/rng.ts";
 import { createGame } from "../engine/state/setup.ts";
@@ -293,22 +294,38 @@ export const useGame = create<StoreState>((set, get) => {
         case "WAR_DECLARED":
           if (e.by === me || e.against === me) {
             const other = e.by === me ? e.against : e.by;
-            toast({ title: `War with ${pn(other)}!`, body: e.by === me ? "Your attack started a war." : `${pn(e.by)} attacked you.`, tone: "war" });
+            toast({ title: `War with ${pn(other)}!`, body: e.by === me ? `You declared war. Reputation −${e.reputationLoss}.` : `${pn(e.by)} declared war on you.`, tone: "war" });
             sound.play("drums", 0.8);
           } else {
             // Wars between other nations change the map too: tell the player.
             toast({ title: `${pn(e.by)} declares war on ${pn(e.against)}`, tone: "war" });
             sound.play("drums", 0.5);
           }
-          logLine(gs, `${pn(e.by)} attacked ${pn(e.against)}: war`, "war");
+          logLine(gs, `${pn(e.by)} declared war on ${pn(e.against)}`, "war");
           break;
-        case "WAR_ENDED":
-          logLine(gs, `${pn(e.by)} bought peace with ${pn(e.against)}`, "info");
-          if (e.by === me || e.against === me) toast({ title: "Peace!", body: `The war between ${pn(e.by)} and ${pn(e.against)} is over.`, tone: "good" });
-          else toast({ title: `${pn(e.by)} and ${pn(e.against)} make peace`, body: `${pn(e.by)} paid for the peace.`, tone: "info" });
+        case "WAR_ENDED": {
+          const terms =
+            e.payment > 0 ? `${pn(e.by)} paid ${money(e.payment)}.` : e.payment < 0 ? `${pn(e.against)} paid ${money(-e.payment)} in tribute.` : "No money changed hands.";
+          logLine(gs, `${pn(e.by)} and ${pn(e.against)} made peace. ${terms}`, "info");
+          if (e.by === me || e.against === me) toast({ title: "Peace!", body: `The war between ${pn(e.by)} and ${pn(e.against)} is over. ${terms} Truce for ${ruleSet.diplomacy.truceSeasons / 4} years.`, tone: "good" });
+          else toast({ title: `${pn(e.by)} and ${pn(e.against)} make peace`, body: terms, tone: "info" });
           break;
-        case "PEACE_LOAN_FAILED":
-          if (e.by === me) toast({ title: "Peace offer refused", body: `${pn(e.target)} kept the money and the war.`, tone: "bad" });
+        }
+        case "PEACE_OFFERED":
+          if (e.to === me) {
+            const terms = e.payment > 0 ? `They offer ${money(e.payment)}.` : e.payment < 0 ? `They demand ${money(-e.payment)}.` : "White peace, no payment.";
+            toast({ title: `${pn(e.by)} offers peace`, body: `${terms} Answer on your turn.`, tone: "info" });
+            sound.play("telegraph");
+          }
+          break;
+        case "PEACE_DECLINED":
+          if (e.offerer === me) toast({ title: `${pn(e.by)} refused your peace offer`, body: "The war goes on.", tone: "bad" });
+          break;
+        case "ATTACK_CALLED_OFF":
+          if (e.power === me) {
+            const area = getArea(world, e.area).name;
+            toast({ title: `Attack on ${area} called off`, body: `${area} is now held by ${pn(e.owner)}, and you are not at war with them.`, tone: "info", area: e.area });
+          }
           break;
         case "SUBVERSION":
           if (e.by === me) {
@@ -730,6 +747,11 @@ export const useGame = create<StoreState>((set, get) => {
           return;
         }
         const valid = move.mode === "army" ? neighborsOf(world, move.from).includes(area) : getArea(world, area).isPort;
+        const owner = gameState.areas[String(area)]?.owner ?? null;
+        if (valid && humanPower !== null && !canAttackOwner(gameState, humanPower, owner)) {
+          toast({ title: "Not at war", body: `Declare war on ${powerName(get().ruleSet.powers, owner)} before attacking.`, tone: "info" });
+          return;
+        }
         if (valid) {
           set({ move: { ...move, to: area } });
           return;

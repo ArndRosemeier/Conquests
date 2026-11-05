@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type React from "react";
 import { MapCanvas } from "../map/MapCanvas.tsx";
 import { useGame } from "../store.ts";
-import { AreaPanel } from "./AreaPanel.tsx";
+import { AreaPanel, PeaceOffers } from "./AreaPanel.tsx";
 import { Chronicle, SeasonBanner, Standings, Toasts, TopBar, TurnDock } from "./Hud.tsx";
 import { EndScreen, GameMenu, Guide, Herald, Settings } from "./Overlays.tsx";
 import { SaveLoad } from "./SaveLoad.tsx";
@@ -40,6 +40,7 @@ export function GameScreen(): React.JSX.Element {
       <TopBar />
       <Standings />
       <AreaPanel />
+      <PeaceOffers />
       <TurnDock />
       <Chronicle />
       <Toasts />

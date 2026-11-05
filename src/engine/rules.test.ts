@@ -83,14 +83,16 @@ describe("combat", () => {
     expect(held.troops).toBeGreaterThan(5_000);
   });
 
-  it("reports the attacker as the one who started a war", () => {
+  it("calls off an attack on a power it is not at war with, and starts no war", () => {
     let s = game();
     const target = W.areas.find((x) => getAreaState(s, x.id).owner === FRANCE)!.id;
     const from = neighborsOf(W, target)[0]!;
     s = set(s, from, { owner: GERMANY, troops: 1_000 });
     s = { ...s, pending: [{ power: GERMANY, from, to: target, troops: 10_000, fleets: 0, bySea: false }] };
-    const { events } = resolveCombat(s, R, W);
-    expect(events).toContainEqual({ type: "WAR_DECLARED", by: GERMANY, against: FRANCE });
+    const { state, events } = resolveCombat(s, R, W);
+    expect(events).toContainEqual({ type: "ATTACK_CALLED_OFF", power: GERMANY, area: target, owner: FRANCE });
+    expect(events.some((e) => e.type === "WAR_DECLARED" || e.type === "BATTLE")).toBe(false);
+    expect(getAreaState(state, from).troops).toBe(11_000);
   });
 });
 

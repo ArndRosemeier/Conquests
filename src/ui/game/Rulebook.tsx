@@ -8,6 +8,7 @@ import {
   effectiveness,
 } from "../../engine/state/combat.ts";
 import { estimateBattle } from "../../engine/state/combatSim.ts";
+import { DIPLOMAT } from "../../controllers/ai/diplomat.ts";
 import {
   HIST_VP_BY_VALUE,
   INCOME_BY_VALUE,
@@ -148,7 +149,7 @@ function BattlesPage({ rs }: { rs: RuleSet }): React.JSX.Element {
         <li>All moves into places their owner already holds land first. Then assaults resolve in play order.</li>
         <li>All of one power's armies marching into the same place this season fight as one combined force. Each sea landing fights on its own.</li>
         <li>If the place already fell to the same power earlier in the resolution, later waves simply reinforce it.</li>
-        <li>Attacking another power's territory declares war on it.</li>
+        <li>You can only march into another power's land while at war with it. If the target is held by a power you are at peace with when the battle comes (it changed hands, or peace was made), the attack is called off and the troops go home.</li>
         <li>
           Winner: takes the territory with its survivors (at least 1), any fortress is destroyed, the territory's
           victory points move from the old owner to the new one, and the winner gains {rs.victory.pointsPerBattleWon} battle point
@@ -260,7 +261,8 @@ function EconomyPage({ rs }: { rs: RuleSet }): React.JSX.Element {
       <h3>Seasons</h3>
       <ul>
         <li>Four seasons a year. Marches and landings are allowed every season: {lim.armyMoves} army moves and {lim.fleetMoves} fleet moves per turn.</li>
-        <li>Spring only: raise troops, build fleets, fortify, send loans and aid (not in the very first spring), spy and bribe (allowed in the first spring too).</li>
+        <li>Spring only: raise troops, build fleets, fortify, send gifts and aid (not in the very first spring), spy and bribe (allowed in the first spring too).</li>
+        <li>Any season: declare war, offer peace and answer peace offers.</li>
         <li>Every army move must leave at least {lim.minGarrison.toLocaleString("en-US")} troops behind.</li>
       </ul>
 
@@ -275,9 +277,8 @@ function EconomyPage({ rs }: { rs: RuleSet }): React.JSX.Element {
         <li>Spy report: {money(rs.costs.spyMinor)}, or {money(rs.costs.spyFortified)} if the target is fortified or a power's supply center.</li>
       </ul>
 
-      <h3>Loans to a power</h3>
-      <p>The money always goes to the other power. If you are at war with it and send at least {money(e.minPeaceLoan)}:</p>
-      <Formula>chance of peace = min(1, loan ÷ {money(e.guaranteedPeaceLoan)})</Formula>
+      <h3>Gifts to a power</h3>
+      <p>A gift simply moves money to another power's treasury. To end a war, offer peace instead (see Diplomacy).</p>
 
       <h3>Aid to an independent country</h3>
       <Formula>extra troops = floor(aid × {num(e.minorTroopsPerDollar)}) &nbsp;(one soldier per ${num(1 / e.minorTroopsPerDollar)})</Formula>
@@ -351,9 +352,58 @@ function TerritoriesPage({ rs }: { rs: RuleSet }): React.JSX.Element {
   );
 }
 
+function DiplomacyPage({ rs }: { rs: RuleSet }): React.JSX.Element {
+  const d = rs.diplomacy;
+  const g = DIPLOMAT;
+  return (
+    <>
+      <h3>War and peace</h3>
+      <ul>
+        <li>Powers start at peace. Land of a power you are at peace with cannot be attacked.</li>
+        <li><b>Declaring war</b> is an order of its own, allowed in any season. It costs {d.declareWarCost} reputation, or only {d.declareWarOnPariahCost} if the victim's reputation is below {d.pariahBelow}.</li>
+        <li><b>Offering peace</b>: you name a payment you make when they accept, nothing, or a sum you demand from them. They answer on their turn. An offer lapses when your next turn begins.</li>
+        <li>Every peace starts a <b>truce of {d.truceSeasons / 4} years</b>, during which neither side can declare war.</li>
+      </ul>
+
+      <h3>Reputation</h3>
+      <p>
+        Every power starts with {d.reputationStart} (scale 0 to {d.reputationMax}) and regains {d.recoveryPerYear} each spring, up to {d.reputationStart}.
+        Low reputation makes a power a target: others pay less to declare war on it, and the computer powers are more willing to.
+      </p>
+
+      <h3>War balance</h3>
+      <Formula>each battle won against the enemy: +{d.warPointsPerBattle} (+ the victory points of land taken)</Formula>
+      <p>The balance is your points minus theirs in the current war. It shows on each enemy territory and drives whether the computer offers or accepts peace.</p>
+
+      <h3>How the computer powers decide</h3>
+      <p>Every season, each computer power rolls once per neighbour it could declare war on. The chance is:</p>
+      <Formula>
+        chance = ({num(g.baseWarChance)} + {num(g.aggressionWarChance)} × aggression) × land hunger × weakness × distraction × leader × pariah × honor × open wars
+      </Formula>
+      <ul>
+        <li><b>Land hunger</b>: ×{num(g.hungerPlenty)} with 6 or more independent neighbours, ×{num(g.hungerSome)} with 3 to 5, ×{num(g.hungerFew)} with 1 or 2, ×{num(g.hungerNone)} with none.</li>
+        <li><b>Weakness</b>: 1 + opportunism × (its territories ÷ the target's − 1), counting at most +2.</li>
+        <li><b>Distraction</b>: 1 + opportunism × 0.8 × the number of wars the target is already fighting.</li>
+        <li><b>Leader</b>: ×{num(g.leaderBonus)} if the target leads with more than 50 points and 25% ahead of the next power. <b>Pariah</b>: ×{num(g.pariahBonus)} if the target's reputation is below {d.pariahBelow}.</li>
+        <li><b>Honor</b>: × (1.3 − honor), and × (1 − honor) again if the war would drop its reputation below 20.</li>
+        <li><b>Open wars</b>: ×{num(g.perOpenWar)} for each war it is already fighting. In the first year: ×{num(g.firstYear)}. Never more than {pct(g.maxWarChance)} a season.</li>
+      </ul>
+      <p className="muted">Personality traits run from 0 to 1 here (0 to 100 in the persona editor). A rolled war is only declared if the power then finds an attack on that neighbour worth making.</p>
+      <p>
+        A computer power accepts peace when this is zero or more (payment in dollars it receives, balance from its side):
+      </p>
+      <Formula>
+        payment ÷ {money(g.dollarsPerPoint)} + {num(g.wearinessPerSeason)} × seasons at war + {g.otherWarPressure} × other wars − balance × (0.5 + aggression) − 6 + (honor − 0.5) × 10
+      </Formula>
+      <p>It offers peace itself when its balance falls to {g.sueBelow} or below, and may demand tribute when well ahead.</p>
+    </>
+  );
+}
+
 export const REFERENCE_PAGES: readonly { title: string; render: (rs: RuleSet) => React.JSX.Element }[] = [
   { title: "Powers", render: (rs) => <PowersPage rs={rs} /> },
   { title: "Battles", render: (rs) => <BattlesPage rs={rs} /> },
   { title: "Money & spies", render: (rs) => <EconomyPage rs={rs} /> },
+  { title: "Diplomacy", render: (rs) => <DiplomacyPage rs={rs} /> },
   { title: "Territories", render: (rs) => <TerritoriesPage rs={rs} /> },
 ];

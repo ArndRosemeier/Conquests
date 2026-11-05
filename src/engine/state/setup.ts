@@ -8,7 +8,7 @@ import type { Area, Rating, WorldDefinition } from "../world/types.ts";
 import type { HomeLayout } from "../world/types.ts";
 import type { Scenario } from "../world/scenarios.ts";
 import type { AreaState, GameState, PersonaKnobs, PowerState } from "./gameState.ts";
-import { declareWar } from "./helpers.ts";
+import { startWar } from "./diplomacy.ts";
 import { Rng } from "./rng.ts";
 
 /** Per-power control configuration chosen at game setup. */
@@ -269,10 +269,6 @@ export function createGame(options: NewGameOptions): GameState {
     };
   }
 
-  let war: GameState["war"] = {};
-  for (const [a, b] of scenario.initialWars) {
-    war = declareWar(war, a, b);
-  }
 
   const firstPower = ruleSet.playOrder.find((id) => {
     const c = powerStates[String(id)]?.control;
@@ -284,7 +280,10 @@ export function createGame(options: NewGameOptions): GameState {
 
   // The founding turn (year 1 spring) allows only espionage, subversion, and
   // movement; the season gates in legalActions enforce this.
-  return {
+  const reputation: Record<string, number> = {};
+  for (const id of Object.keys(powerStates)) reputation[id] = ruleSet.diplomacy.reputationStart;
+
+  let state: GameState = {
     rulesetId: ruleSet.id,
     worldId: world.id,
     scenarioId: scenario.id,
@@ -298,11 +297,18 @@ export function createGame(options: NewGameOptions): GameState {
     powers: powerStates,
     areas: areaStates,
     pending: [],
-    war,
+    war: {},
+    truces: {},
+    warSince: {},
+    warGains: {},
+    reputation,
+    peaceOffers: [],
     intel: {},
     rngState: rng.snapshot(),
     winningScore: winningScore,
     winner: null,
     tick: 0,
   };
+  for (const [a, b] of scenario.initialWars) state = startWar(state, a, b);
+  return state;
 }
