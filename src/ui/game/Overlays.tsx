@@ -125,6 +125,8 @@ export function Settings(): React.JSX.Element | null {
   const setPanel = useGame((s) => s.setPanel);
   const aiSpeed = useGame((s) => s.aiSpeed);
   const setAiSpeed = useGame((s) => s.setAiSpeed);
+  const mapView = useGame((s) => s.mapView);
+  const setMapView = useGame((s) => s.setMapView);
   const [a, setA] = useState<AudioSettings>(sound.settings);
   useEffect(() => sound.subscribe(() => setA({ ...sound.settings })), []);
   const close = (): void => setPanel("none");
@@ -149,6 +151,13 @@ export function Settings(): React.JSX.Element | null {
         <label className="check">
           <input type="checkbox" checked={a.muted} onChange={(e) => sound.update({ muted: e.target.checked })} /> Mute everything
         </label>
+        <div className="field">
+          <span>World view</span>
+          <div className="segmented">
+            <button className={mapView === "flat" ? "on" : ""} onClick={() => setMapView("flat")}>Flat map</button>
+            <button className={mapView === "globe" ? "on" : ""} onClick={() => setMapView("globe")}>Globe</button>
+          </div>
+        </div>
         <div className="field">
           <span>Pace of rival turns</span>
           <div className="segmented">

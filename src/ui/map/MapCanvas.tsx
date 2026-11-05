@@ -6,6 +6,7 @@ import { getArea, neighborsOf, portAreas } from "../../engine/world/classic.ts";
 import { intelAgeLabel, terrainLabel } from "../labels.ts";
 import { money, powerColor, powerName, troops } from "../content/powers.ts";
 import { useGame } from "../store.ts";
+import { GlobeView } from "./globeView.ts";
 import { MapRenderer } from "./renderer.ts";
 
 /** The interactive world map: pan, zoom, pinch, click to select, hover for details. */
@@ -13,7 +14,10 @@ export function MapCanvas(): React.JSX.Element {
   const wrapRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<HTMLCanvasElement>(null);
   const fxRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<MapRenderer | null>(null);
+  const glRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<MapRenderer | GlobeView | null>(null);
+  const view = useGame((s) => s.mapView);
+  const setMapView = useGame((s) => s.setMapView);
   const world = useGame((s) => s.world);
   const ruleSet = useGame((s) => s.ruleSet);
   const gameState = useGame((s) => s.gameState);
@@ -28,7 +32,7 @@ export function MapCanvas(): React.JSX.Element {
   const [hover, setHover] = useState<{ id: AreaId; x: number; y: number } | null>(null);
 
   useEffect(() => {
-    const r = new MapRenderer(baseRef.current!, fxRef.current!, world);
+    const r = view === "globe" ? new GlobeView(glRef.current!, world) : new MapRenderer(baseRef.current!, fxRef.current!, world);
     rendererRef.current = r;
     const el = wrapRef.current!;
     const ro = new ResizeObserver(() => {
@@ -41,7 +45,7 @@ export function MapCanvas(): React.JSX.Element {
       r.destroy();
       rendererRef.current = null;
     };
-  }, [world]);
+  }, [world, view]);
 
   const colors = useMemo(() => new Map(ruleSet.powers.map((p) => [String(p.id), p.color])), [ruleSet]);
   const names = useMemo(() => new Map(world.areas.map((a) => [a.id, a.name])), [world]);
@@ -72,7 +76,7 @@ export function MapCanvas(): React.JSX.Element {
       names,
       ports,
     });
-  }, [gameState, me, selected, move, targets, colors, names, ports]);
+  }, [gameState, me, selected, move, targets, colors, names, ports, view]);
 
   useEffect(() => {
     const r = rendererRef.current;
@@ -97,6 +101,12 @@ export function MapCanvas(): React.JSX.Element {
   useEffect(() => {
     if (focus) rendererRef.current?.flyTo(focus.area);
   }, [focus]);
+
+  // A fresh view starts where the player is looking: the selected area, else the last focus.
+  useEffect(() => {
+    const at = useGame.getState().selected ?? useGame.getState().focus?.area ?? null;
+    if (at !== null) rendererRef.current?.flyTo(at);
+  }, [view]);
 
   // Pointer handling: drag to pan (with a little glide), click to select, two fingers to zoom.
   const pointers = useRef(new Map<number, { x: number; y: number }>());
@@ -221,7 +231,7 @@ export function MapCanvas(): React.JSX.Element {
 
   return (
     <div
-      className="map"
+      className={`map${view === "globe" ? " globe-view" : ""}`}
       ref={wrapRef}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -237,15 +247,31 @@ export function MapCanvas(): React.JSX.Element {
         select(null);
       }}
     >
-      <div className="map-ocean" />
-      <canvas ref={baseRef} className="map-layer" />
-      <canvas ref={fxRef} className="map-layer" />
+      {view === "globe" ? (
+        <>
+          <div className="globe-space" />
+          <canvas key="gl" ref={glRef} className="map-layer" />
+        </>
+      ) : (
+        <>
+          <div className="map-ocean" />
+          <canvas key="base" ref={baseRef} className="map-layer" />
+          <canvas key="fx" ref={fxRef} className="map-layer" />
+        </>
+      )}
       <div className="map-vignette" />
       {hoverInfo}
       <div className="map-zoom" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
         <button aria-label="Zoom in" onClick={() => { const r = rendererRef.current; const b = wrapRef.current?.getBoundingClientRect(); if (r && b) r.zoomAt(b.width / 2, b.height / 2, 1.4); }}>+</button>
         <button aria-label="Zoom out" onClick={() => { const r = rendererRef.current; const b = wrapRef.current?.getBoundingClientRect(); if (r && b) r.zoomAt(b.width / 2, b.height / 2, 1 / 1.4); }}>−</button>
-        <button aria-label="Whole world" onClick={() => rendererRef.current?.fitWorld()}>◎</button>
+        <button aria-label="Whole world" title="Whole world" onClick={() => rendererRef.current?.fitWorld()}>◎</button>
+        <button
+          aria-label={view === "globe" ? "Show the flat map" : "Show the globe"}
+          title={view === "globe" ? "Flat map" : "Globe"}
+          onClick={() => setMapView(view === "globe" ? "flat" : "globe")}
+        >
+          {view === "globe" ? "🗺" : "🌐"}
+        </button>
       </div>
     </div>
   );

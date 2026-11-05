@@ -40,6 +40,8 @@ interface Effect {
   readonly seed: number;
 }
 
+export type EffectInput = Omit<Effect, "start" | "duration" | "seed">;
+
 interface Camera {
   x: number; // world x at screen centre
   y: number;
@@ -87,6 +89,8 @@ export class MapRenderer {
   private sized = false;
   private height = 1;
   private dpr = 1;
+  /** Pixel ratio of the animation layer: half the base's in texture mode, where it is redrawn every frame. */
+  private fxDpr = 1;
   private cam: Camera;
   private target: Camera | null = null;
   private velocity = { x: 0, y: 0 };
@@ -103,6 +107,12 @@ export class MapRenderer {
     private readonly base: HTMLCanvasElement,
     private readonly fx: HTMLCanvasElement,
     world: WorldDefinition,
+    /**
+     * Texture mode: draw the whole world once, longitude -180..180 across the canvas and
+     * latitude 90..-90 down it, for the globe to wrap around a sphere. The globe drives
+     * frames itself through `renderFrame`.
+     */
+    private readonly texture = false,
   ) {
     this.geo = worldGeometry(world);
     this.baseCtx = base.getContext("2d")!;
@@ -134,11 +144,17 @@ export class MapRenderer {
       }
       c.putImageData(img, 0, 0);
     }, 128);
+    if (texture) return;
     const loop = (): void => {
       this.frame();
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);
+  }
+
+  /** Texture mode: draw one frame. Returns true when the base layer was redrawn. */
+  renderFrame(): boolean {
+    return this.frame();
   }
 
   destroy(): void {
@@ -150,9 +166,10 @@ export class MapRenderer {
     this.width = width;
     this.height = height;
     this.dpr = dpr;
-    for (const c of [this.base, this.fx]) {
-      c.width = Math.round(width * dpr);
-      c.height = Math.round(height * dpr);
+    this.fxDpr = this.texture ? dpr / 2 : dpr;
+    for (const [c, r] of [[this.base, this.dpr], [this.fx, this.fxDpr]] as const) {
+      c.width = Math.round(width * r);
+      c.height = Math.round(height * r);
       c.style.width = `${width}px`;
       c.style.height = `${height}px`;
     }
@@ -177,6 +194,11 @@ export class MapRenderer {
   private pendingFly: { id: AreaId; scale: number } | null = null;
 
   fitWorld(): void {
+    if (this.texture) {
+      this.cam = { x: 0, y: 0, scale: this.width / 360 };
+      this.dirty = true;
+      return;
+    }
     const h = this.bounds.maxY - this.bounds.minY;
     this.target = null;
     this.cam = { x: 15, y: (this.bounds.minY + this.bounds.maxY) / 2 + 4, scale: Math.max(this.width / 300, this.height / (h + 6)) };
@@ -196,6 +218,7 @@ export class MapRenderer {
   // ---- camera -------------------------------------------------------------
 
   private clampCamera(c: Camera): void {
+    if (this.texture) return;
     c.scale = Math.min(80, Math.max(this.minScale(), c.scale));
     const halfH = this.height / 2 / c.scale;
     const top = this.bounds.minY - 6;
@@ -273,7 +296,7 @@ export class MapRenderer {
 
   // ---- effects --------------------------------------------------------------
 
-  addEffect(e: Omit<Effect, "start" | "duration" | "seed">, delay: number): void {
+  addEffect(e: EffectInput, delay: number): void {
     const duration = e.kind === "battle" ? 2200 : e.kind === "capture" ? 1600 : 1400;
     this.effects.push({ ...e, start: performance.now() + delay, duration, seed: (this.seed += 1) });
   }
@@ -292,12 +315,12 @@ export class MapRenderer {
     return out;
   }
 
-  private worldTransform(ctx: CanvasRenderingContext2D, off: number): void {
-    const s = this.cam.scale * this.dpr;
-    ctx.setTransform(s, 0, 0, s, (this.width / 2 - (this.cam.x - off) * this.cam.scale) * this.dpr, (this.height / 2 - this.cam.y * this.cam.scale) * this.dpr);
+  private worldTransform(ctx: CanvasRenderingContext2D, off: number, dpr = this.dpr): void {
+    const s = this.cam.scale * dpr;
+    ctx.setTransform(s, 0, 0, s, (this.width / 2 - (this.cam.x - off) * this.cam.scale) * dpr, (this.height / 2 - this.cam.y * this.cam.scale) * dpr);
   }
 
-  private frame(): void {
+  private frame(): boolean {
     const now = performance.now();
     if (this.target) {
       const t = this.target;
@@ -318,11 +341,13 @@ export class MapRenderer {
       this.clampCamera(this.cam);
       this.dirty = true;
     }
-    if (this.dirty) {
+    const redraw = this.dirty;
+    if (redraw) {
       this.drawBase();
       this.dirty = false;
     }
     this.drawFx(now);
+    return redraw;
   }
 
   private fillFor(st: AreaState): string {
@@ -348,10 +373,13 @@ export class MapRenderer {
 
     for (const off of offs) {
       this.worldTransform(ctx, off);
-      // Soft light along every coast, then the land itself.
+      // Soft light along every coast, then the land itself. (The globe paints the
+      // glow once into its sea instead: a blur over the whole world is slow.)
       ctx.save();
-      ctx.shadowColor = "rgba(255, 236, 190, 0.35)";
-      ctx.shadowBlur = 10 * this.dpr;
+      if (!this.texture) {
+        ctx.shadowColor = "rgba(255, 236, 190, 0.35)";
+        ctx.shadowBlur = 10 * this.dpr;
+      }
       ctx.fillStyle = PARCHMENT;
       for (const g of this.geo.values()) if (visible(g, off)) ctx.fill(g.path);
       ctx.restore();
@@ -403,7 +431,7 @@ export class MapRenderer {
 
     // Markers and labels in screen space so they stay crisp at any zoom.
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    const showNames = this.cam.scale > 7.5;
+    const showNames = this.texture || this.cam.scale > 7.5;
     for (const off of offs) {
       for (const g of this.geo.values()) {
         if (!visible(g, off)) continue;
@@ -570,7 +598,7 @@ export class MapRenderer {
     const g = this.geo.get(id);
     if (!g) return;
     for (const off of this.copies()) {
-      this.worldTransform(ctx, off);
+      this.worldTransform(ctx, off, this.fxDpr);
       if (fill) {
         ctx.fillStyle = fill;
         ctx.fill(g.path);
@@ -584,7 +612,7 @@ export class MapRenderer {
       ctx.stroke(g.path);
       ctx.setLineDash([]);
     }
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.setTransform(this.fxDpr, 0, 0, this.fxDpr, 0, 0);
   }
 
   private drawFx(now: number): void {
@@ -593,7 +621,7 @@ export class MapRenderer {
     ctx.clearRect(0, 0, this.fx.width, this.fx.height);
     const model = this.model;
     if (!model) return;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.setTransform(this.fxDpr, 0, 0, this.fxDpr, 0, 0);
     ctx.lineJoin = "round";
     const pulse = 0.5 + 0.5 * Math.sin(now / 260);
 

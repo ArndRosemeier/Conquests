@@ -3,38 +3,11 @@ import type { AreaState } from "../../engine/state/gameState.ts";
 import type { AreaId } from "../../engine/types.ts";
 import type { Point, WorldDefinition } from "../../engine/world/types.ts";
 import { worldGeometry } from "../map/geometry.ts";
+import { ArcLayer, atmosphere, stars, toVec } from "../map/globeKit.ts";
 
 const TEX_W = 2048;
 const TEX_H = 1024;
 const NEUTRAL = "#cbb68a";
-
-/** Longitude/latitude (degrees) to a point on a sphere, matching three's sphere UVs. */
-function toVec(lon: number, lat: number, r: number): THREE.Vector3 {
-  const phi = ((90 - lat) * Math.PI) / 180;
-  const theta = ((lon + 180) * Math.PI) / 180;
-  return new THREE.Vector3(-r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
-}
-
-interface Arc {
-  readonly mesh: THREE.Mesh;
-  readonly flash: THREE.Sprite;
-  readonly total: number;
-  readonly born: number;
-  readonly color: THREE.Color;
-}
-
-function glowTexture(): THREE.Texture {
-  const c = document.createElement("canvas");
-  c.width = c.height = 128;
-  const g = c.getContext("2d")!;
-  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grd.addColorStop(0, "rgba(255,255,255,1)");
-  grd.addColorStop(0.25, "rgba(255,230,180,0.8)");
-  grd.addColorStop(1, "rgba(255,180,80,0)");
-  g.fillStyle = grd;
-  g.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(c);
-}
 
 /**
  * The title screen's spinning globe: territories painted in their owners'
@@ -49,8 +22,7 @@ export class Globe {
   private readonly tex: THREE.CanvasTexture;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly geo;
-  private readonly glow = glowTexture();
-  private arcs: Arc[] = [];
+  private readonly arcs: ArcLayer;
   private raf = 0;
   private last = performance.now();
   private spin = 0.06;
@@ -84,29 +56,8 @@ export class Globe {
     this.earth.rotation.y = (-(20 + 90) * Math.PI) / 180; // start over Europe and Africa
     this.pivot.add(this.earth);
 
-    // Atmosphere: a back-facing shell with a fresnel glow.
-    const atmo = new THREE.Mesh(
-      new THREE.SphereGeometry(1.09, 64, 48),
-      new THREE.ShaderMaterial({
-        side: THREE.BackSide,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        vertexShader: "varying vec3 vN; void main(){ vN = normalize(normalMatrix*normal); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }",
-        fragmentShader: "varying vec3 vN; void main(){ float i = pow(max(0.0, 0.66 - dot(vN, vec3(0.0,0.0,1.0))), 2.4); gl_FragColor = vec4(0.55,0.72,1.0,1.0)*i*0.9 + vec4(0.9,0.7,0.35,0.0)*i*0.25; }",
-      }),
-    );
-    this.scene.add(atmo);
-
-    // Stars.
-    const starGeo = new THREE.BufferGeometry();
-    const pos = new Float32Array(1800 * 3);
-    for (let i = 0; i < 1800; i += 1) {
-      const v = new THREE.Vector3().randomDirection().multiplyScalar(20 + Math.random() * 20);
-      pos.set([v.x, v.y, v.z], i * 3);
-    }
-    starGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    this.scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xfff1d6, size: 0.06, sizeAttenuation: true, transparent: true, opacity: 0.8 })));
+    this.scene.add(atmosphere(), stars());
+    this.arcs = new ArcLayer(this.earth);
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.05));
     const sun = new THREE.DirectionalLight(0xfff0d8, 2.2);
@@ -169,36 +120,7 @@ export class Globe {
     const a = this.centre(from);
     const b = this.centre(to);
     if (!a || !b) return;
-    const va = toVec(a.x, -a.y, 1.0);
-    const vb = toVec(b.x, -b.y, 1.0);
-    const angle = va.angleTo(vb);
-    const lift = 0.06 + angle * 0.22;
-    const pts: THREE.Vector3[] = [];
-    for (let i = 0; i <= 48; i += 1) {
-      const t = i / 48;
-      const v = new THREE.Vector3().copy(va).lerp(vb, t).normalize();
-      // Slerp-ish: renormalising a lerp is fine for arcs shorter than a half-turn.
-      v.multiplyScalar(1.004 + Math.sin(Math.PI * t) * lift);
-      pts.push(v);
-    }
-    const curve = new THREE.CatmullRomCurve3(pts);
-    const geom = new THREE.TubeGeometry(curve, 64, 0.0065, 6, false);
-    const c = new THREE.Color(color);
-    const mesh = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.95 }));
-    geom.setDrawRange(0, 0);
-    const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 }));
-    flash.position.copy(vb).multiplyScalar(1.01);
-    flash.scale.setScalar(0.01);
-    this.earth.add(mesh, flash);
-    this.arcs.push({ mesh, flash, total: geom.index?.count ?? 0, born: performance.now(), color: c });
-    if (this.arcs.length > 40) this.dropArc(this.arcs.shift()!);
-  }
-
-  private dropArc(a: Arc): void {
-    this.earth.remove(a.mesh, a.flash);
-    a.mesh.geometry.dispose();
-    (a.mesh.material as THREE.Material).dispose();
-    a.flash.material.dispose();
+    this.arcs.attack(toVec(a.x, -a.y, 1), toVec(b.x, -b.y, 1), color);
   }
 
   /** Easter egg: a fast spin. */
@@ -239,23 +161,7 @@ export class Globe {
     }
     this.pivot.rotation.x += (this.tilt - this.pivot.rotation.x) * 0.1;
 
-    const keep: Arc[] = [];
-    for (const a of this.arcs) {
-      const age = (now - a.born) / 1000;
-      const grow = Math.min(1, age / 1.1);
-      a.mesh.geometry.setDrawRange(0, Math.floor(a.total * (1 - Math.pow(1 - grow, 2)) / 3) * 3);
-      const fade = age < 3 ? 1 : Math.max(0, 1 - (age - 3) / 2);
-      (a.mesh.material as THREE.MeshBasicMaterial).opacity = 0.95 * fade;
-      const hit = age - 1.0;
-      if (hit > 0) {
-        const p = Math.min(1, hit / 0.9);
-        a.flash.material.opacity = (1 - p) * 1.2;
-        a.flash.scale.setScalar(0.05 + p * 0.28);
-      }
-      if (fade > 0) keep.push(a);
-      else this.dropArc(a);
-    }
-    this.arcs = keep;
+    this.arcs.update(now);
 
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.loop);
@@ -263,9 +169,8 @@ export class Globe {
 
   destroy(): void {
     cancelAnimationFrame(this.raf);
-    for (const a of this.arcs) this.dropArc(a);
+    this.arcs.dispose();
     this.tex.dispose();
-    this.glow.dispose();
     this.renderer.dispose();
     void this.world;
     void this.canvas;
