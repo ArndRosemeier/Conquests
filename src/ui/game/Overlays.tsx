@@ -130,7 +130,7 @@ export function Settings(): React.JSX.Element | null {
   const close = (): void => setPanel("none");
   useEscape(close);
   if (panel !== "settings") return null;
-  const slider = (key: "music" | "sfx" | "voice", label: string): React.JSX.Element => (
+  const slider = (key: "music" | "sfx", label: string): React.JSX.Element => (
     <label className="slider">
       <span>{label} <b>{Math.round(a[key] * 100)}%</b></span>
       <input type="range" min={0} max={1} step={0.05} value={a[key]} onChange={(e) => {
@@ -146,7 +146,6 @@ export function Settings(): React.JSX.Element | null {
         <h2>Settings</h2>
         {slider("music", "Music")}
         {slider("sfx", "Sound effects")}
-        {slider("voice", "Herald's voice")}
         <label className="check">
           <input type="checkbox" checked={a.muted} onChange={(e) => sound.update({ muted: e.target.checked })} /> Mute everything
         </label>

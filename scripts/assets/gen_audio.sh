@@ -27,12 +27,3 @@ sfx page "The sound of a newspaper page being turned quickly"
 sfx click "The sound of a soft wooden click like a game token placed on a board"
 sfx build "The sound of hammers on metal and a steam whistle in a busy shipyard"
 wait
-vo(){ $OR speech "$2" --model $SEED --out vo/$1.mp3 --instructions "$3" > vo/$1.log 2>&1 & }
-H="a confident, warm British herald announcing news in a grand hall, clear and unhurried"
-vo welcome "Welcome to Conquests. The world awaits your ambition." "$H"
-vo yourturn "Your turn, Excellency." "$H"
-vo war "War has been declared!" "urgent, dramatic British herald, raised voice"
-vo victory "Victory! Your empire stands supreme." "triumphant British herald, proud and loud"
-vo defeat "Your empire has fallen." "somber, quiet British herald"
-vo newyear "A new year dawns. The treasury is replenished." "$H"
-wait
