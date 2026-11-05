@@ -254,16 +254,22 @@ export const useGame = create<StoreState>((set, get) => {
           battles += 1;
           const area = getArea(world, e.area).name;
           if (e.attacker === me) {
-            const text = e.attackerWon
-              ? `Your forces took ${area}`
-              : `Your attack on ${area} was repelled`;
+            const text = !e.attackerWon
+              ? `Your attack on ${area} was repelled`
+              : e.captured
+                ? `Your forces took ${area}`
+                : `Your fleet won the battle off ${area}`;
             logLine(gs, `${text} (lost ${troopsLabel(e.attackerLosses)})`, e.attackerWon ? "good" : "bad", e.area);
             toast({ title: text, body: `Losses: ${troopsLabel(e.attackerLosses)} · Enemy: ${troopsLabel(e.defenderLosses)}`, tone: e.attackerWon ? "good" : "bad", area: e.area });
           } else if (e.defender === me) {
-            const text = e.attackerWon ? `${pn(e.attacker)} captured ${area}` : `${area} held against ${pn(e.attacker)}`;
+            const text = !e.attackerWon
+              ? `${area} held against ${pn(e.attacker)}`
+              : e.captured
+                ? `${pn(e.attacker)} captured ${area}`
+                : `${pn(e.attacker)} defeated your fleet off ${area}`;
             logLine(gs, text, e.attackerWon ? "bad" : "good", e.area);
             toast({ title: text, tone: e.attackerWon ? "bad" : "good", area: e.area });
-          } else if (e.attackerWon) {
+          } else if (e.captured) {
             logLine(gs, `${pn(e.attacker)} took ${area}${e.defender ? ` from ${pn(e.defender)}` : ""}`, "info", e.area);
           }
           break;
