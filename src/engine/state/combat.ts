@@ -233,6 +233,7 @@ function resolveLandAssault(state: GameState, legs: readonly PendingMove[], ctx:
     attacker: power,
     defender: defenderOwner,
     attackerWon: battle.attackerWon,
+    captured: battle.attackerWon,
     attackerLosses: troops - battle.attackerSurvivors,
     defenderLosses: target.troops - battle.defenderSurvivors,
     from: legs.map((m) => m.from),
@@ -275,6 +276,7 @@ function resolveSeaAssault(state: GameState, move: PendingMove, ctx: Ctx): GameS
       ctx.events.push({
         ...battleBase,
         attackerWon: false,
+        captured: false,
         attackerLosses: (crossRegion ? move.troops : 0) + (move.fleets - survivingFleets),
         defenderLosses: dest.fleets - naval.defenderSurvivors,
       });
@@ -287,6 +289,7 @@ function resolveSeaAssault(state: GameState, move: PendingMove, ctx: Ctx): GameS
       ctx.events.push({
         ...battleBase,
         attackerWon: true,
+        captured: false,
         attackerLosses: move.fleets - survivingFleets,
         defenderLosses: dest.fleets,
       });
@@ -316,6 +319,7 @@ function resolveSeaAssault(state: GameState, move: PendingMove, ctx: Ctx): GameS
   ctx.events.push({
     ...battleBase,
     attackerWon: battle.attackerWon,
+    captured: battle.attackerWon,
     attackerLosses: move.troops - battle.attackerSurvivors + (move.fleets - survivingFleets),
     defenderLosses: target.troops - battle.defenderSurvivors + dest.fleets,
   });

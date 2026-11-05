@@ -26,6 +26,8 @@ export type GameEvent =
       readonly attacker: PowerId;
       readonly defender: PowerId | null;
       readonly attackerWon: boolean;
+      /** True only when the attacker took the area. A won fleet sortie keeps `attackerWon` but captures nothing. */
+      readonly captured: boolean;
       readonly attackerLosses: number;
       readonly defenderLosses: number;
       /** Areas the attack set out from (several when armies converged). */

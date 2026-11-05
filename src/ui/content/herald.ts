@@ -69,7 +69,9 @@ export function storyFor(
       if (!e.attackerWon) {
         return { kind: "repelled", headline: headline("repelled", f, seed), art: ART.land, weight: 20 + mine(e.attacker, e.defender) };
       }
-      if (e.bySea && e.defenderLosses > 0 && e.defender !== null) {
+      if (!e.captured) {
+        // A won sea battle that took no land (a ships-only sortie): only news if ships sank.
+        if (e.defenderLosses === 0 || e.defender === null) return null;
         return { kind: "naval", headline: headline("naval", f, seed), art: ART.naval, weight: 45 + mine(e.attacker, e.defender) };
       }
       if (e.defender !== null) {
