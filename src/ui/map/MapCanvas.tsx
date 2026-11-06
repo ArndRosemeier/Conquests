@@ -17,7 +17,11 @@ export function MapCanvas(): React.JSX.Element {
   const fxRef = useRef<HTMLCanvasElement>(null);
   const glRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<MapRenderer | GlobeView | null>(null);
-  const view = useGame((s) => s.mapView);
+  const wanted = useGame((s) => s.mapView);
+  // The view on screen. It trails the chosen one while the globe unwraps.
+  const [view, setView] = useState(wanted);
+  const wrapIn = useRef(false);
+  const fromGlobe = useRef(false);
   const setMapView = useGame((s) => s.setMapView);
   const world = useGame((s) => s.world);
   const ruleSet = useGame((s) => s.ruleSet);
@@ -32,8 +36,43 @@ export function MapCanvas(): React.JSX.Element {
   const consumeFx = useGame((s) => s.consumeFx);
   const [hover, setHover] = useState<{ id: AreaId; x: number; y: number } | null>(null);
 
+  // Switching: the flat map wraps onto the globe as it appears; the globe
+  // unwraps into the flat map before it goes. Asking again mid-way reverses.
   useEffect(() => {
-    const r = view === "globe" ? new GlobeView(glRef.current!, world) : new MapRenderer(baseRef.current!, fxRef.current!, world);
+    const r = rendererRef.current;
+    if (wanted === "globe") {
+      if (view === "globe") {
+        if (r instanceof GlobeView) r.wrap();
+        return;
+      }
+      wrapIn.current = true;
+      setView("globe");
+      return;
+    }
+    if (view === "flat") return;
+    if (!(r instanceof GlobeView)) {
+      setView("flat");
+      return;
+    }
+    void r.unwrap().then((done) => {
+      if (!done || useGame.getState().mapView !== "flat") return;
+      fromGlobe.current = true;
+      setView("flat");
+    });
+  }, [wanted, view]);
+
+  useEffect(() => {
+    let r: MapRenderer | GlobeView;
+    if (view === "globe") {
+      r = new GlobeView(glRef.current!, world, wrapIn.current);
+    } else {
+      const flat = new MapRenderer(baseRef.current!, fxRef.current!, world);
+      // Arriving from the globe: open on the same whole-world view the sheet unwrapped to.
+      if (fromGlobe.current) flat.centreWorldOn(0);
+      r = flat;
+    }
+    wrapIn.current = false;
+    fromGlobe.current = false;
     rendererRef.current = r;
     const el = wrapRef.current!;
     const ro = new ResizeObserver(() => {
@@ -274,11 +313,11 @@ export function MapCanvas(): React.JSX.Element {
         <button aria-label="Zoom out" onClick={() => { const r = rendererRef.current; const b = wrapRef.current?.getBoundingClientRect(); if (r && b) r.zoomAt(b.width / 2, b.height / 2, 1 / 1.4); }}>−</button>
         <button aria-label="Whole world" title="Whole world" onClick={() => rendererRef.current?.fitWorld()}>◎</button>
         <button
-          aria-label={view === "globe" ? "Show the flat map" : "Show the globe"}
-          title={view === "globe" ? "Flat map" : "Globe"}
-          onClick={() => setMapView(view === "globe" ? "flat" : "globe")}
+          aria-label={wanted === "globe" ? "Show the flat map" : "Show the globe"}
+          title={wanted === "globe" ? "Flat map (G)" : "Globe (G)"}
+          onClick={() => setMapView(wanted === "globe" ? "flat" : "globe")}
         >
-          {view === "globe" ? "🗺" : "🌐"}
+          {wanted === "globe" ? "🗺" : "🌐"}
         </button>
       </div>
     </div>

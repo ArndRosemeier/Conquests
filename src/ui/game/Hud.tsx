@@ -47,6 +47,25 @@ function useRolling(value: number): number {
   return shown;
 }
 
+/** One click between the flat map and the globe. */
+function ViewToggle(): React.JSX.Element {
+  const view = useGame((s) => s.mapView);
+  const setMapView = useGame((s) => s.setMapView);
+  const globe = view === "globe";
+  return (
+    <button
+      className={`view-toggle${globe ? " is-globe" : ""}`}
+      title={globe ? "Unwrap to the flat map (G)" : "Wrap onto the globe (G)"}
+      aria-label={globe ? "Show the flat map" : "Show the globe"}
+      aria-pressed={globe}
+      onClick={() => setMapView(globe ? "flat" : "globe")}
+    >
+      <span className={globe ? "" : "on"}>🗺<i>Map</i></span>
+      <span className={globe ? "on" : ""}>🌐<i>Globe</i></span>
+    </button>
+  );
+}
+
 export function TopBar(): React.JSX.Element | null {
   const gs = useGame((s) => s.gameState);
   const me = useGame((s) => s.humanPower);
@@ -86,6 +105,7 @@ export function TopBar(): React.JSX.Element | null {
       )}
       <RoomChip />
       <div className="topbar-right">
+        <ViewToggle />
         <WhatsNewButton />
         <button className="icon-btn" title="How to play" onClick={() => setPanel("guide")}>?</button>
         <button className="icon-btn" title="Menu" onClick={() => setPanel("menu")}>☰</button>

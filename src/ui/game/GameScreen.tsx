@@ -14,7 +14,7 @@ export function GameScreen(): React.JSX.Element {
   const endTurn = useGame((s) => s.endTurn);
   const undo = useGame((s) => s.undo);
 
-  // Keyboard: Esc backs out, Enter ends the turn, Ctrl+Z takes back an order.
+  // Keyboard: Esc backs out, Enter ends the turn, Ctrl+Z takes back an order, G flips map and globe.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const st = useGame.getState();
@@ -28,6 +28,8 @@ export function GameScreen(): React.JSX.Element {
         endTurn();
       } else if (e.key.toLowerCase() === "z" && (e.ctrlKey || e.metaKey)) {
         undo();
+      } else if (e.key.toLowerCase() === "g" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        st.setMapView(st.mapView === "globe" ? "flat" : "globe");
       }
     };
     window.addEventListener("keydown", onKey);
