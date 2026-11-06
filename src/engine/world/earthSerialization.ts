@@ -18,6 +18,7 @@ export interface SerializedWorld {
     readonly maxX: number;
     readonly maxY: number;
   };
+  readonly decor?: readonly (readonly (readonly [number, number])[])[];
 }
 
 interface SerializedRegion {
@@ -60,6 +61,9 @@ export function serializeWorld(world: WorldDefinition): SerializedWorld {
     })),
     adjacency: [...world.adjacency].map(([id, ns]) => [id, [...ns]] as [number, number[]]),
     bounds: world.bounds,
+    ...(world.decor
+      ? { decor: world.decor.map((ring) => ring.map((p) => [round(p.x), round(p.y)] as [number, number])) }
+      : {}),
   };
 }
 
@@ -84,5 +88,6 @@ export function deserializeWorld(data: SerializedWorld): WorldDefinition {
   const adjacency = new Map<AreaId, readonly AreaId[]>(
     data.adjacency.map(([id, ns]) => [areaId(id), ns.map((n) => areaId(n))]),
   );
-  return { id: data.id, regions, areas, adjacency, bounds: data.bounds };
+  const decor = data.decor?.map((ring) => ring.map(toPoint));
+  return { id: data.id, regions, areas, adjacency, bounds: data.bounds, ...(decor ? { decor } : {}) };
 }

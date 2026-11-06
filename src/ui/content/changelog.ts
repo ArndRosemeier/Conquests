@@ -17,6 +17,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.03",
+    date: "2026-11-06",
+    notes: [
+      "A new world map drawn from real country borders and coastlines.",
+      "Paris holds the north French coast again and can build and sail fleets.",
+      "Territories now match their real neighbours: Rupert's Land around Hudson Bay, Finland under Russia, Galicia under Austria-Hungary, Bolivia's 1880 coast.",
+      "Greenland, New Zealand and the Arctic appear as unclaimed land.",
+    ],
+  },
+  {
     version: "1.02",
     date: "2026-11-06",
     notes: [

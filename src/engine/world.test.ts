@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { areaId } from "./types.ts";
 import { CLASSIC_WORLD, neighborsOf, portAreas } from "./world/classic.ts";
+import { pointInRingPoints } from "./world/geo/geometry.ts";
 
 describe("classic world", () => {
   it("contains all 131 areas across 8 regions", () => {
@@ -40,5 +41,22 @@ describe("classic world", () => {
     expect(neighborsOf(CLASSIC_WORLD, areaId(42))).toContain(areaId(79));
     expect(neighborsOf(CLASSIC_WORLD, areaId(114))).toContain(areaId(116));
     expect(neighborsOf(CLASSIC_WORLD, areaId(82))).toContain(areaId(84));
+  });
+
+  it("follows real geography", () => {
+    const port = (id: number): boolean => CLASSIC_WORLD.areas.find((a) => a.id === areaId(id))!.isPort;
+    expect(port(49)).toBe(true); // Paris reaches the Channel coast
+    expect(port(52)).toBe(true); // Berlin on the Baltic
+    expect(port(28)).toBe(false); // Paraguay
+    expect(port(91)).toBe(false); // Nepal
+    expect(neighborsOf(CLASSIC_WORLD, areaId(49))).toContain(areaId(37)); // Paris - Belgium
+    expect(neighborsOf(CLASSIC_WORLD, areaId(27))).toContain(areaId(28)); // Brazil - Paraguay
+    expect(neighborsOf(CLASSIC_WORLD, areaId(47))).not.toContain(areaId(48)); // no land bridge to Ireland
+  });
+
+  it("keeps every label inside its territory", () => {
+    for (const area of CLASSIC_WORLD.areas) {
+      expect(area.shape.some((ring) => pointInRingPoints(area.labelAnchor, ring))).toBe(true);
+    }
   });
 });

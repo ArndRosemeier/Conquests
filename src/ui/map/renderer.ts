@@ -4,7 +4,7 @@ import type { AreaId } from "../../engine/types.ts";
 import type { Point, WorldDefinition } from "../../engine/world/types.ts";
 import { troops as troopsLabel } from "../content/powers.ts";
 import type { AreaGeometry } from "./geometry.ts";
-import { arcControl, nearestCopy, quadPoint, worldGeometry } from "./geometry.ts";
+import { arcControl, decorPath, nearestCopy, quadPoint, worldGeometry } from "./geometry.ts";
 
 /**
  * The game map, drawn on two canvases: a "base" layer with land, borders and
@@ -49,6 +49,7 @@ interface Camera {
 }
 
 const PARCHMENT = "#d7c49b";
+const DECOR = "rgba(196, 186, 160, 0.22)";
 const INK = "rgba(52, 36, 18, 0.55)";
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -80,6 +81,8 @@ function makePattern(draw: (c: CanvasRenderingContext2D, s: number) => void, siz
 
 export class MapRenderer {
   private readonly geo: Map<AreaId, AreaGeometry>;
+  /** Land outside every territory, drawn as faded, unplayable scenery. */
+  private readonly decor: Path2D | null;
   private readonly baseCtx: CanvasRenderingContext2D;
   private readonly fxCtx: CanvasRenderingContext2D;
   private readonly hitCtx: CanvasRenderingContext2D;
@@ -115,6 +118,7 @@ export class MapRenderer {
     private readonly texture = false,
   ) {
     this.geo = worldGeometry(world);
+    this.decor = decorPath(world);
     this.baseCtx = base.getContext("2d")!;
     this.fxCtx = fx.getContext("2d")!;
     this.hitCtx = document.createElement("canvas").getContext("2d")!;
@@ -390,6 +394,15 @@ export class MapRenderer {
       ctx.fillStyle = PARCHMENT;
       for (const g of this.geo.values()) if (visible(g, off)) ctx.fill(g.path);
       ctx.restore();
+
+      // Unplayable land (Greenland, New Zealand, far islands): a faint ghost.
+      if (this.decor) {
+        ctx.fillStyle = DECOR;
+        ctx.fill(this.decor);
+        ctx.strokeStyle = "rgba(215, 196, 155, 0.35)";
+        ctx.lineWidth = 0.7 * px;
+        ctx.stroke(this.decor);
+      }
 
       for (const g of this.geo.values()) {
         if (!visible(g, off)) continue;

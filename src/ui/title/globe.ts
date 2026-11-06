@@ -2,12 +2,13 @@ import * as THREE from "three";
 import type { AreaState } from "../../engine/state/gameState.ts";
 import type { AreaId } from "../../engine/types.ts";
 import type { Point, WorldDefinition } from "../../engine/world/types.ts";
-import { worldGeometry } from "../map/geometry.ts";
+import { decorPath, worldGeometry } from "../map/geometry.ts";
 import { ArcLayer, atmosphere, stars, toVec } from "../map/globeKit.ts";
 
 const TEX_W = 2048;
 const TEX_H = 1024;
 const NEUTRAL = "#cbb68a";
+const DECOR = "#8f8168";
 
 /**
  * The title screen's spinning globe: territories painted in their owners'
@@ -22,6 +23,7 @@ export class Globe {
   private readonly tex: THREE.CanvasTexture;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly geo;
+  private readonly decor: Path2D | null;
   private readonly arcs: ArcLayer;
   private raf = 0;
   private last = performance.now();
@@ -36,6 +38,7 @@ export class Globe {
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.geo = worldGeometry(world);
+    this.decor = decorPath(world);
 
     this.camera.position.set(0, 0, 4.6);
     this.scene.add(this.pivot);
@@ -99,6 +102,10 @@ export class Globe {
     const sy = TEX_H / 180;
     for (const shift of [-360, 0, 360]) {
       g.setTransform(sx, 0, 0, sy, (180 + shift) * sx, 90 * sy);
+      if (this.decor) {
+        g.fillStyle = DECOR;
+        g.fill(this.decor);
+      }
       for (const [id, a] of this.geo) {
         const owner = areas[String(id)]?.owner ?? null;
         g.fillStyle = owner === null ? NEUTRAL : colors.get(String(owner)) ?? NEUTRAL;
