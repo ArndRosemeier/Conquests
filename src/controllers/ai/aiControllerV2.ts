@@ -23,6 +23,8 @@ import {
   riskThreshold,
 } from "./persona.ts";
 import type { DecisionContext, PlayerController } from "../types.ts";
+import { navySize, regroupFleets } from "./fleetPlanning.ts";
+import type { FleetIntel } from "./fleetPlanning.ts";
 
 /**
  * FROZEN BASELINE. A verbatim copy of the instrumental-intel utility AI, kept
@@ -125,9 +127,15 @@ export class AIControllerV2 implements PlayerController {
     }
 
     const spendDown = this.spendDown(sim, power);
-    if (spendDown.length > 0 && this.applyAll(sim, spendDown) !== null) {
+    const afterSpend = this.applyAll(sim, spendDown);
+    if (spendDown.length > 0 && afterSpend !== null) {
+      sim = afterSpend;
       out.push(...spendDown);
     }
+
+    // Bring stranded fleets home so the next invasion reuses them.
+    const regroup = this.regroup(sim, power);
+    if (regroup.length > 0 && this.applyAll(sim, regroup) !== null) out.push(...regroup);
 
     return out;
   }
@@ -486,6 +494,9 @@ export class AIControllerV2 implements PlayerController {
     if (ports.length === 0) return [];
 
     const navalW = navalWeight(knobs.naval);
+    // Ships ferry an army, sail home and ferry the next: buy hulls only when
+    // the whole navy (wherever it is) is too small for this invasion.
+    const navy = navySize(state, power);
     const plans: Plan[] = [];
     for (const target of Object.values(state.areas)) {
       if (target.owner === power) continue;
@@ -497,7 +508,7 @@ export class AIControllerV2 implements PlayerController {
       }
       const { troops: need, winProb } = this.assault(target, est, knobs, power);
 
-      const plan = this.bestSeaLaunch(state, power, knobs, target, need, est, ports);
+      const plan = this.bestSeaLaunch(state, power, knobs, target, need, est, ports, navy);
       if (plan === null) continue;
 
       const def = getPowerDef(this.ruleSet, power);
@@ -529,6 +540,7 @@ export class AIControllerV2 implements PlayerController {
     need: number,
     est: Estimate,
     ports: readonly AreaState[],
+    navy: number,
   ): { buildCost: number; crossRegion: boolean; actions: readonly Action[] } | null {
     let best: { buildCost: number; crossRegion: boolean; actions: readonly Action[] } | null = null;
     const def = getPowerDef(this.ruleSet, power);
@@ -555,6 +567,7 @@ export class AIControllerV2 implements PlayerController {
       if (launch.fleets < needFleets) {
         const deficit = needFleets - launch.fleets;
         if (!(canBuild(state) && launch.supplyCenterOf === power)) continue;
+        if (navy >= needFleets) continue;
         const buildFleets = Math.ceil(deficit / finc) * finc;
         buildCost += (buildFleets / 5) * def.navyCostPer5;
         actions.push({ type: "BUILD_FLEET", area: launch.id, fleets: buildFleets });
@@ -635,49 +648,42 @@ export class AIControllerV2 implements PlayerController {
     return plans;
   }
 
+  private fleetIntel(state: GameState, power: PowerId): FleetIntel {
+    const knobs = this.persona(state, power);
+    return {
+      spareTroops: (id) => this.surplus(state, power, knobs, state.areas[String(id)]!),
+      knownFleets: (id) => {
+        const est = this.estimate(state, power, id);
+        return est.known ? est.fleets : 0;
+      },
+    };
+  }
+
+  private regroup(state: GameState, power: PowerId): readonly Action[] {
+    return regroupFleets(state, power, this.ruleSet, this.world, this.fleetIntel(state, power));
+  }
+
   private spendDown(state: GameState, power: PowerId): readonly Action[] {
     if (!canBuild(state)) return [];
     const owned = this.ownedIds(state, power);
     const def = getPowerDef(this.ruleSet, power);
     const treasury = getPowerState(state, power).treasury;
+    const actions: Action[] = [];
 
     const scs: { id: AreaId; frontier: number }[] = [];
-    let portSc: AreaId | null = null;
     for (const id of owned) {
       const area = state.areas[String(id)];
       if (area === undefined || area.supplyCenterOf !== power) continue;
       const frontier = neighborsOf(this.world, id).filter((nb) => !owned.has(nb)).length;
       scs.push({ id, frontier });
-      if (portSc === null && getArea(this.world, id).isPort) portSc = id;
     }
     scs.sort((a, b) => b.frontier - a.frontier);
 
-    if (portSc !== null) {
-      const min = this.ruleSet.limits.minGarrison;
-      let idleTroops = 0;
-      let capacity = 0;
-      for (const id of owned) {
-        const a = state.areas[String(id)];
-        if (a === undefined) continue;
-        idleTroops += Math.max(0, a.troops - min);
-        capacity += a.fleets * this.ruleSet.limits.troopsPerFleet;
-      }
-      if (capacity < idleTroops) {
-        const groups = Math.floor(treasury / def.navyCostPer5);
-        if (groups > 0) {
-          return [
-            { type: "BUILD_FLEET", area: portSc, fleets: groups * this.ruleSet.costs.fleetBuildIncrement },
-          ];
-        }
-      }
-    }
-
     const chunks = Math.floor(treasury / def.armyCostPer10k);
-    if (chunks <= 0 || scs.length === 0) return [];
+    if (chunks <= 0 || scs.length === 0) return actions;
 
     const spread = Math.min(SPENDDOWN_SPREAD, scs.length);
     const inc = this.ruleSet.costs.troopBuildIncrement;
-    const actions: Action[] = [];
     for (let i = 0; i < spread && chunks > 0; i += 1) {
       const share = i === 0 ? chunks - Math.floor(chunks / spread) * (spread - 1) : Math.floor(chunks / spread);
       if (share <= 0) continue;

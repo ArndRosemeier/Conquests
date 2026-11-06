@@ -17,6 +17,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.08",
+    date: "2026-11-06",
+    notes: [
+      "Computer rivals stop overbuilding navies. Their ships ferry an army over, sail home and carry the next one; new ships are bought only when the whole fleet is too small for an invasion.",
+      "The money saved goes into troops: rival armies are now several times larger, so they defend and attack much harder.",
+    ],
+  },
+  {
     version: "1.07",
     date: "2026-11-06",
     notes: [
