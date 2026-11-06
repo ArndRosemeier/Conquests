@@ -10,6 +10,7 @@ import type { AreaState, GameState, IntelReport, PendingMove, PowerState } from 
 import {
   answerCallAction,
   answerPeaceAction,
+  joinCoalitionAction,
   answerProposalAction,
   callsTo,
   canAttackOwner,
@@ -416,9 +417,11 @@ export function reduce(
     case "DECLARE_WAR":
       return declareWarAction(state, ruleSet, power, action.target);
     case "OFFER_PEACE":
-      return offerPeaceAction(state, power, action.target, action.payment);
+      return offerPeaceAction(state, ruleSet, power, action.target, action.payment, action.cede ?? [], action.demand ?? []);
     case "ANSWER_PEACE":
-      return answerPeaceAction(state, ruleSet, power, action.from, action.accept);
+      return answerPeaceAction(state, ruleSet, world, power, action.from, action.accept);
+    case "JOIN_COALITION":
+      return joinCoalitionAction(state, ruleSet, power, action.target);
     case "PROPOSE":
       return proposeAction(state, ruleSet, power, action);
     case "ANSWER_PROPOSAL":

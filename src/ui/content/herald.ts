@@ -81,8 +81,17 @@ export function storyFor(
     }
     case "WAR_DECLARED":
       return { kind: "war", headline: headline("war", { attacker: pn(e.by), defender: pn(e.against) }, seed), art: ART.war, weight: 60 + mine(e.by, e.against) };
-    case "WAR_ENDED":
+    case "WAR_ENDED": {
+      const land = e.gained.length > 0 ? { taker: e.by, giver: e.against, areas: e.gained } : e.ceded.length > 0 ? { taker: e.against, giver: e.by, areas: e.ceded } : null;
+      if (land !== null) {
+        const f = { attacker: pn(land.taker), defender: pn(land.giver), area: land.areas.map((a) => getArea(world, a).name).join(" And ") };
+        return { kind: "peace_land", headline: headline("peace_land", f, seed), art: ART.peace, weight: 60 + mine(e.by, e.against) };
+      }
       return { kind: "peace", headline: headline("peace", { attacker: pn(e.by), defender: pn(e.against) }, seed), art: ART.peace, weight: 55 + mine(e.by, e.against) };
+    }
+    case "COALITION_JOINED":
+      if (!e.founded) return null;
+      return { kind: "coalition", headline: headline("coalition", { attacker: pn(e.power), defender: pn(e.target) }, seed), art: ART.war, weight: 65 + mine(e.power, e.target) };
     case "TREATY_SIGNED":
       return {
         kind: e.kind === "alliance" ? "alliance" : "pact",

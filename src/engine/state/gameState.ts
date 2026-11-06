@@ -102,6 +102,21 @@ export interface PeaceOffer {
   readonly from: PowerId;
   readonly to: PowerId;
   readonly payment: number;
+  /** Areas the offerer hands over to `to` on acceptance. */
+  readonly cede?: readonly AreaId[];
+  /** Areas the offerer asks `to` to hand over. */
+  readonly demand?: readonly AreaId[];
+}
+
+/**
+ * Powers banded together against a power whose reputation has sunk below the
+ * pariah line. It ends when the target recovers its standing, is eliminated,
+ * or no member is still at war with it.
+ */
+export interface Coalition {
+  readonly target: PowerId;
+  readonly members: readonly PowerId[];
+  readonly since: number;
 }
 
 export type TreatyKind = "pact" | "alliance";
@@ -205,6 +220,8 @@ export interface GameState {
   readonly callsToArms: readonly CallToArms[];
   /** Goodwill from gifts and kept promises, keyed "a>b" (what a has earned with b). */
   readonly goodwill: Readonly<Record<string, number>>;
+  /** Coalitions against pariahs (absent in older saves). */
+  readonly coalitions?: readonly Coalition[];
   /** What each power has learned about foreign garrisons through spying. */
   readonly intel: IntelTable;
   readonly rngState: number;

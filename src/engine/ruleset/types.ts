@@ -128,6 +128,14 @@ export interface DiplomacyRules {
   readonly pactKeptGain: number;
   /** Seasons a call to arms or treaty offer stays open. */
   readonly offerSeasons: number;
+  /** Most areas either side may hand over in one peace treaty. */
+  readonly maxCededAreas: number;
+  /** Reputation a coalition's target must regain before the coalition breaks up. */
+  readonly coalitionEndsAt: number;
+  /** Reputation gained for joining a coalition against a pariah. */
+  readonly coalitionJoinGain: number;
+  /** Reputation lost for a separate peace while other members still fight. */
+  readonly coalitionDesertCost: number;
 }
 
 /**

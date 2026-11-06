@@ -142,6 +142,10 @@ export const CLASSIC_RULESET: RuleSet = {
     answerCallGain: 15,
     pactKeptGain: 3,
     offerSeasons: 4,
+    maxCededAreas: 3,
+    coalitionEndsAt: 40,
+    coalitionJoinGain: 3,
+    coalitionDesertCost: 10,
   },
 };
 

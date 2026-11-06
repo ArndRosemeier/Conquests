@@ -17,6 +17,16 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.05",
+    date: "2026-11-06",
+    notes: [
+      "Leaders: every nation now has its head of state, with a painted portrait, in the Diplomacy panel and on offers. They tell you what they think of you.",
+      "Land in peace treaties: ask for border territories, or hand some over, along with money. Home supply centers can never be traded.",
+      "Coalitions: once a power's reputation sinks below 25, others can band together against it. Joining raises your reputation; a separate peace costs it.",
+      "Computer rivals demand land when they are winning, offer it when they are losing and broke, and gang up on powers that break their word.",
+    ],
+  },
+  {
     version: "1.04",
     date: "2026-11-06",
     notes: [
