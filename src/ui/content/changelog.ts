@@ -17,6 +17,13 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.07",
+    date: "2026-11-06",
+    notes: [
+      "Neutral countries are weaker: twice as many are barely defended, and most garrisons now sit near the low end of their range. Huge neutral armies are rare.",
+    ],
+  },
+  {
     version: "1.06",
     date: "2026-11-06",
     notes: [
