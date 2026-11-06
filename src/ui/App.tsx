@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type React from "react";
 import { sound } from "./audio/sound.ts";
 import { GameScreen } from "./game/GameScreen.tsx";
-import { Guide, Settings } from "./game/Overlays.tsx";
+import { Guide, Settings, WhatsNew } from "./game/Overlays.tsx";
 import { SaveLoad } from "./game/SaveLoad.tsx";
 import { NewGameScreen } from "./newgame/NewGameScreen.tsx";
 import { inviteCode, OnlineScreen } from "./online/OnlineScreen.tsx";
@@ -36,6 +36,7 @@ export function App(): React.JSX.Element {
       <SaveLoad />
       <Guide />
       <Settings />
+      <WhatsNew />
     </>
   );
 }

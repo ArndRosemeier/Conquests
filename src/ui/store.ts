@@ -67,7 +67,7 @@ export type Screen = "title" | "newgame" | "game" | "online";
 /** local: everything runs here. host: this browser runs an online game. client: someone else hosts. */
 export type Mode = "local" | "host" | "client";
 export type MoveMode = "army" | "fleet";
-export type Panel = "none" | "guide" | "settings" | "saves" | "menu";
+export type Panel = "none" | "guide" | "settings" | "saves" | "menu" | "whatsnew";
 export type AiSpeed = "relaxed" | "normal" | "fast";
 /** How the world is shown in a game: the flat map or the turning globe. */
 export type MapView = "flat" | "globe";

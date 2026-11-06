@@ -4,7 +4,7 @@ import { MapCanvas } from "../map/MapCanvas.tsx";
 import { useGame } from "../store.ts";
 import { AreaPanel, PeaceOffers } from "./AreaPanel.tsx";
 import { Chronicle, SeasonBanner, Standings, Toasts, TopBar, TurnDock } from "./Hud.tsx";
-import { EndScreen, GameMenu, Guide, Herald, Settings } from "./Overlays.tsx";
+import { EndScreen, GameMenu, Guide, Herald, Settings, WhatsNew } from "./Overlays.tsx";
 import { SaveLoad } from "./SaveLoad.tsx";
 
 export function GameScreen(): React.JSX.Element {
@@ -50,6 +50,7 @@ export function GameScreen(): React.JSX.Element {
       <GameMenu />
       <Settings />
       <Guide />
+      <WhatsNew />
       <SaveLoad />
     </div>
   );

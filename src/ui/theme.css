@@ -556,3 +556,22 @@ select { cursor: pointer; }
 /* Globe view: deep space behind the turning world. */
 .map.globe-view { cursor: grab; }
 .globe-space { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 55%, #10213d 0%, #070d1c 55%, #03060e 100%); }
+
+/* What's new + version */
+.whatsnew-btn {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px;
+  border-radius: 999px; border: 1px solid var(--glass-line); background: var(--glass); backdrop-filter: blur(10px);
+  color: var(--text-dim); font: 600 12px/1 var(--sans); letter-spacing: .04em; cursor: pointer; white-space: nowrap;
+  transition: border-color .2s, color .2s;
+}
+.whatsnew-btn span { color: var(--brass); font-weight: 700; }
+.whatsnew-btn:hover { border-color: var(--brass); color: var(--text); }
+.whatsnew-dot { position: absolute; top: -2px; right: -2px; width: 9px; height: 9px; border-radius: 50%; background: var(--brass-2); box-shadow: 0 0 8px var(--brass-2); }
+.title-whatsnew { position: absolute; top: 18px; right: 72px; z-index: 5; }
+.whatsnew-modal { width: min(560px, 100%); }
+.whatsnew-modal .release { margin-bottom: 18px; }
+.whatsnew-modal .release h3 { font-family: var(--display); font-size: 16px; color: var(--brass); margin-bottom: 8px; letter-spacing: .04em; }
+.whatsnew-modal .release h3 small { font: 500 12px/1 var(--sans); color: var(--text-dim); margin-left: 8px; letter-spacing: 0; }
+.whatsnew-modal ul { padding-left: 18px; display: grid; gap: 6px; line-height: 1.45; }
+.menu-version { margin: 4px 0 0; font-size: 12px; color: var(--text-dim); letter-spacing: .06em; }
+@media (max-width: 720px) { .whatsnew-btn span { display: none; } }

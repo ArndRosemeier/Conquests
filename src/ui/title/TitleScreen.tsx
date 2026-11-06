@@ -9,6 +9,7 @@ import { BASE, storyFor, TICKER } from "../content/herald.ts";
 import { lookOf } from "../content/powers.ts";
 import { listAutosaves, loadAutosave } from "../persistence.ts";
 import { useGame } from "../store.ts";
+import { WhatsNewButton } from "../game/Overlays.tsx";
 import { AttractGame } from "./attract.ts";
 import { Globe } from "./globe.ts";
 
@@ -242,6 +243,7 @@ export function TitleScreen(): React.JSX.Element {
         </div>
       </section>
 
+      <WhatsNewButton className="title-whatsnew" />
       <Ticker live={news} />
     </div>
   );
