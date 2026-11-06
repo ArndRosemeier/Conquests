@@ -9,6 +9,7 @@ import { lookOf, money, powerName } from "../content/powers.ts";
 import { useGame } from "../store.ts";
 import type { AiSpeed } from "../store.ts";
 import { REFERENCE_PAGES } from "./Rulebook.tsx";
+import { CHANGELOG, hasUnseenNews, markNewsSeen, VERSION } from "../content/changelog.ts";
 
 function useEscape(onClose: () => void): void {
   useEffect(() => {
@@ -115,7 +116,9 @@ export function GameMenu(): React.JSX.Element | null {
         <button className="btn wide" onClick={() => setPanel("saves")}>Save or load</button>
         <button className="btn wide" onClick={() => setPanel("guide")}>How to play</button>
         <button className="btn wide" onClick={() => setPanel("settings")}>Settings</button>
+        <button className="btn wide" onClick={() => setPanel("whatsnew")}>What's new</button>
         <button className="btn ghost wide" onClick={() => { if (window.confirm(leaveText)) goTitle(); }}>Quit to title</button>
+        <p className="menu-version">Conquests v{VERSION}</p>
       </div>
     </div>
   );
@@ -256,5 +259,52 @@ export function Guide(): React.JSX.Element | null {
         </div>
       </div>
     </div>
+  );
+}
+
+/** What's new: the release notes, newest first. */
+export function WhatsNew(): React.JSX.Element | null {
+  const panel = useGame((s) => s.panel);
+  const setPanel = useGame((s) => s.setPanel);
+  const close = (): void => setPanel("none");
+  useEscape(close);
+  useEffect(() => {
+    if (panel === "whatsnew") markNewsSeen();
+  }, [panel]);
+  if (panel !== "whatsnew") return null;
+  return (
+    <div className="overlay" onClick={close}>
+      <div className="modal glass whatsnew-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="close" aria-label="Close" onClick={close}>×</button>
+        <h2>What's new</h2>
+        {CHANGELOG.map((r) => (
+          <section key={r.version} className="release">
+            <h3>
+              Version {r.version} <small>{r.date}</small>
+            </h3>
+            <ul>
+              {r.notes.map((n, i) => <li key={i}>{n}</li>)}
+            </ul>
+          </section>
+        ))}
+        <button className="btn primary wide" onClick={close}>Back</button>
+      </div>
+    </div>
+  );
+}
+
+/** A small "What's new" button with the version; a dot marks unread notes. */
+export function WhatsNewButton({ className = "" }: { className?: string }): React.JSX.Element {
+  const setPanel = useGame((s) => s.setPanel);
+  const panel = useGame((s) => s.panel);
+  const [unseen, setUnseen] = useState(hasUnseenNews);
+  useEffect(() => {
+    if (panel === "whatsnew") setUnseen(false);
+  }, [panel]);
+  return (
+    <button className={`whatsnew-btn ${className}`} title="What's new in this version" onClick={() => setPanel("whatsnew")}>
+      {unseen && <i className="whatsnew-dot" aria-label="New" />}
+      What's new <span>v{VERSION}</span>
+    </button>
   );
 }

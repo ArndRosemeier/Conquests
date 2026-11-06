@@ -9,6 +9,7 @@ import { annualIncomeFor } from "../../engine/state/scoring.ts";
 import type { Season } from "../../engine/types.ts";
 import { lookOf, money, powerName } from "../content/powers.ts";
 import { getNet, netSnapshot, subscribeNet, useGame } from "../store.ts";
+import { WhatsNewButton } from "./Overlays.tsx";
 
 /** Online: who plays which nation (empty offline). */
 function useSeatNames(): ReadonlyMap<string, { name: string; online: boolean }> {
@@ -85,6 +86,7 @@ export function TopBar(): React.JSX.Element | null {
       )}
       <RoomChip />
       <div className="topbar-right">
+        <WhatsNewButton />
         <button className="icon-btn" title="How to play" onClick={() => setPanel("guide")}>?</button>
         <button className="icon-btn" title="Menu" onClick={() => setPanel("menu")}>☰</button>
       </div>

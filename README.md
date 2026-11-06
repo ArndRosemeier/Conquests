@@ -93,3 +93,8 @@ The engine is deterministic: the same seed and actions give the same game, and i
 instead of being ignored.
 
 `docs/AUDIT.md` lists what an audit of the game found and what was fixed.
+
+## Versions
+
+The version starts at 1.00 and rises by 0.01 with every release merged to main. The release notes
+live in `src/ui/content/changelog.ts` and show in the game under "What's new".
