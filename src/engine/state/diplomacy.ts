@@ -2,7 +2,7 @@ import type { RuleSet } from "../ruleset/types.ts";
 import { IllegalActionError } from "../types.ts";
 import type { PowerId } from "../types.ts";
 import type { GameEvent } from "./events.ts";
-import type { GameState, PeaceOffer } from "./gameState.ts";
+import type { CallToArms, GameState, PeaceOffer, Proposal, Treaty } from "./gameState.ts";
 import { declareWar, endWar, getPowerState, isAtWar, withPower } from "./helpers.ts";
 import { nowSeason } from "./knowledge.ts";
 
@@ -65,10 +65,266 @@ export function warBlocker(state: GameState, by: PowerId, target: PowerId): stri
   return null;
 }
 
-/** Reputation `by` would lose for declaring war on `target`. */
-export function declareWarCost(state: GameState, ruleSet: RuleSet, target: PowerId): number {
+/** Reputation `by` would lose for declaring war on `target` (more when it breaks a treaty). */
+export function declareWarCost(state: GameState, ruleSet: RuleSet, by: PowerId, target: PowerId): number {
   const d = ruleSet.diplomacy;
-  return reputationOf(state, ruleSet, target) < d.pariahBelow ? d.declareWarOnPariahCost : d.declareWarCost;
+  const base = reputationOf(state, ruleSet, target) < d.pariahBelow ? d.declareWarOnPariahCost : d.declareWarCost;
+  const treaty = treatyBetween(state, by, target);
+  return base + (treaty?.kind === "pact" ? d.pactBreakCost : treaty?.kind === "alliance" ? d.allyBetrayalCost : 0);
+}
+
+// --- Treaties ---------------------------------------------------------------
+
+export function treatyBetween(state: GameState, a: PowerId, b: PowerId): Treaty | undefined {
+  return (state.treaties ?? []).find((t) => (t.a === a && t.b === b) || (t.a === b && t.b === a));
+}
+
+export function alliesOf(state: GameState, power: PowerId): PowerId[] {
+  return (state.treaties ?? [])
+    .filter((t) => t.kind === "alliance" && (t.a === power || t.b === power))
+    .map((t) => (t.a === power ? t.b : t.a));
+}
+
+function withoutTreaty(state: GameState, a: PowerId, b: PowerId): GameState {
+  const t = treatyBetween(state, a, b);
+  return t === undefined ? state : { ...state, treaties: (state.treaties ?? []).filter((x) => x !== t) };
+}
+
+function addGoodwill(state: GameState, from: PowerId, to: PowerId, points: number): GameState {
+  const key = gainKey(from, to);
+  const g = state.goodwill ?? {};
+  const next = Math.max(-60, Math.min(60, (g[key] ?? 0) + points));
+  return { ...state, goodwill: { ...g, [key]: next } };
+}
+
+/** Goodwill `from` has earned with `to` through gifts and kept promises. */
+export function goodwillOf(state: GameState, from: PowerId, to: PowerId): number {
+  return state.goodwill?.[gainKey(from, to)] ?? 0;
+}
+
+/** A gift earns goodwill: 1 point per $100k, capped. */
+export function recordGift(state: GameState, from: PowerId, to: PowerId, amount: number): GameState {
+  return addGoodwill(state, from, to, Math.min(20, amount / 100_000));
+}
+
+/**
+ * Put `joiner` at war with `enemy` and raise calls to arms for the victim's
+ * allies. Used by declarations, by allies answering a call, and by war aid.
+ * Any treaty between the two ends; a truce does not stop an ally or a helper.
+ */
+function joinWar(
+  state: GameState,
+  ruleSet: RuleSet,
+  joiner: PowerId,
+  enemy: PowerId,
+  cost: number,
+  reason: "declared" | "ally" | "aid",
+  events: GameEvent[],
+): GameState {
+  let next = state;
+  const broken = treatyBetween(next, joiner, enemy);
+  if (broken !== undefined) {
+    next = withoutTreaty(next, joiner, enemy);
+    events.push({ type: "TREATY_ENDED", kind: broken.kind, a: joiner, b: enemy, reason: "broken" });
+  }
+  next = startWar(next, joiner, enemy);
+  const truces = { ...(next.truces ?? {}) };
+  delete truces[pairKey(joiner, enemy)];
+  next = { ...next, truces };
+  if (cost !== 0) next = adjustReputation(next, ruleSet, joiner, -cost);
+  events.push({ type: "WAR_DECLARED", by: joiner, against: enemy, reputationLoss: cost, reason });
+
+  // The victim's allies are called to arms.
+  const expires = nowSeason(next) + ruleSet.diplomacy.offerSeasons;
+  const calls = [...(next.callsToArms ?? [])];
+  for (const ally of alliesOf(next, enemy)) {
+    if (ally === joiner || getPowerState(next, ally).eliminated || isAtWar(next, ally, joiner)) continue;
+    if (calls.some((c) => c.ally === ally && c.enemy === joiner)) continue;
+    calls.push({ ally, partner: enemy, enemy: joiner, expires });
+    events.push({ type: "CALL_TO_ARMS", ally, partner: enemy, enemy: joiner });
+  }
+  return { ...next, callsToArms: calls };
+}
+
+/** Calls to arms waiting for `power` to answer. */
+export function callsTo(state: GameState, power: PowerId): readonly CallToArms[] {
+  return (state.callsToArms ?? []).filter((c) => c.ally === power);
+}
+
+export function answerCallAction(
+  state: GameState,
+  ruleSet: RuleSet,
+  me: PowerId,
+  partner: PowerId,
+  join: boolean,
+): { state: GameState; events: GameEvent[] } {
+  const call = (state.callsToArms ?? []).find((c) => c.ally === me && c.partner === partner);
+  if (call === undefined) throw new IllegalActionError(`${String(partner)} has not called you to arms`);
+  let next: GameState = { ...state, callsToArms: (state.callsToArms ?? []).filter((c) => c !== call), tick: state.tick + 1 };
+  const events: GameEvent[] = [];
+  const d = ruleSet.diplomacy;
+  if (join) {
+    if (!isAtWar(next, me, call.enemy)) next = joinWar(next, ruleSet, me, call.enemy, 0, "ally", events);
+    next = adjustReputation(next, ruleSet, me, d.answerCallGain);
+    next = addGoodwill(next, me, partner, 20);
+  } else {
+    next = adjustReputation(next, ruleSet, me, -d.refuseCallCost);
+    next = addGoodwill(next, me, partner, -40);
+    next = withoutTreaty(next, me, partner);
+    events.push({ type: "TREATY_ENDED", kind: "alliance", a: me, b: partner, reason: "refused" });
+  }
+  events.unshift({ type: "CALL_ANSWERED", ally: me, partner, enemy: call.enemy, joined: join });
+  return { state: next, events };
+}
+
+/** Why `from` cannot propose this to `to`, or null. */
+export function proposalBlocker(
+  state: GameState,
+  ruleSet: RuleSet,
+  from: PowerId,
+  to: PowerId,
+  kind: Proposal["kind"],
+  enemy: PowerId | null,
+  years: number,
+): string | null {
+  if (from === to) return "Not with yourself";
+  const t = getPowerState(state, to);
+  if (t.eliminated || t.control === "neutral") return `${String(to)} is not in the game`;
+  const treaty = treatyBetween(state, from, to);
+  if (kind === "pact" || kind === "alliance") {
+    if (isAtWar(state, from, to)) return "Make peace first";
+    if (kind === "pact" && treaty !== undefined) return treaty.kind === "pact" ? "A pact is already in force" : "You are already allies";
+    if (kind === "alliance" && treaty?.kind === "alliance") return "You are already allies";
+    if (kind === "pact" && !ruleSet.diplomacy.pactYears.includes(years)) return `A pact runs ${ruleSet.diplomacy.pactYears.join(" or ")} years`;
+    return null;
+  }
+  if (enemy === null || enemy === from || enemy === to) return "Name the enemy";
+  const fromAtWar = isAtWar(state, from, enemy);
+  const toAtWar = isAtWar(state, to, enemy);
+  if (fromAtWar === toAtWar) return fromAtWar ? "Both of you already fight them" : "Neither of you is at war with them";
+  if (isAtWar(state, from, to)) return "You are at war with each other";
+  const helper = fromAtWar ? to : from;
+  if (truceUntil(state, helper, enemy) !== null) return `${String(helper)} has a truce with ${String(enemy)}`;
+  return null;
+}
+
+export function proposeAction(
+  state: GameState,
+  ruleSet: RuleSet,
+  from: PowerId,
+  p: { readonly to: PowerId; readonly kind: Proposal["kind"]; readonly payment: number; readonly years: number; readonly enemy: PowerId | null },
+): { state: GameState; events: GameEvent[] } {
+  const blocker = proposalBlocker(state, ruleSet, from, p.to, p.kind, p.enemy, p.years);
+  if (blocker !== null) throw new IllegalActionError(blocker);
+  if (!Number.isFinite(p.payment) || Math.round(p.payment) !== p.payment) throw new IllegalActionError("Payment must be whole dollars");
+  if (p.payment > getPowerState(state, from).treasury) throw new IllegalActionError("You cannot offer more than you have");
+  const proposal: Proposal = {
+    kind: p.kind,
+    from,
+    to: p.to,
+    payment: p.payment,
+    years: p.kind === "pact" ? p.years : 0,
+    enemy: p.kind === "aid" ? p.enemy : null,
+    expires: nowSeason(state) + ruleSet.diplomacy.offerSeasons,
+  };
+  const rest = (state.proposals ?? []).filter((x) => !(x.from === from && x.to === p.to && x.kind === p.kind));
+  return {
+    state: { ...state, proposals: [...rest, proposal], tick: state.tick + 1 },
+    events: [{ type: "PROPOSAL_MADE", from, to: p.to, kind: p.kind, payment: p.payment, enemy: proposal.enemy }],
+  };
+}
+
+export function answerProposalAction(
+  state: GameState,
+  ruleSet: RuleSet,
+  me: PowerId,
+  from: PowerId,
+  kind: Proposal["kind"],
+  accept: boolean,
+): { state: GameState; events: GameEvent[] } {
+  const p = (state.proposals ?? []).find((x) => x.from === from && x.to === me && x.kind === kind);
+  if (p === undefined) throw new IllegalActionError(`There is no such proposal from ${String(from)}`);
+  let next: GameState = { ...state, proposals: (state.proposals ?? []).filter((x) => x !== p), tick: state.tick + 1 };
+  if (!accept) return { state: next, events: [{ type: "PROPOSAL_DECLINED", by: me, from, kind }] };
+  const blocker = proposalBlocker(next, ruleSet, from, me, kind, p.enemy, p.years);
+  if (blocker !== null) throw new IllegalActionError(blocker);
+  next = transfer(next, from, me, p.payment);
+  const events: GameEvent[] = [];
+  const now = nowSeason(next);
+  if (kind === "pact" || kind === "alliance") {
+    next = withoutTreaty(next, from, me);
+    const treaty: Treaty = { kind, a: from, b: me, since: now, until: kind === "pact" ? now + p.years * 4 : null };
+    next = { ...next, treaties: [...(next.treaties ?? []), treaty] };
+    events.push({ type: "TREATY_SIGNED", kind, a: from, b: me, payment: p.payment, years: p.years });
+  } else {
+    const enemy = p.enemy!;
+    const helper = isAtWar(next, from, enemy) ? me : from;
+    const victim = helper === me ? from : me;
+    events.push({ type: "AID_AGREED", helper, victim, enemy, payment: p.payment });
+    // Coming to a treaty partner's aid costs no reputation; joining anyone else's war does.
+    const cost = treatyBetween(next, helper, victim) !== undefined ? 0 : declareWarCost(next, ruleSet, helper, enemy);
+    next = joinWar(next, ruleSet, helper, enemy, cost, "aid", events);
+    next = addGoodwill(next, helper, victim, 10);
+  }
+  return { state: next, events };
+}
+
+export function leaveAllianceAction(
+  state: GameState,
+  ruleSet: RuleSet,
+  me: PowerId,
+  other: PowerId,
+): { state: GameState; events: GameEvent[] } {
+  if (treatyBetween(state, me, other)?.kind !== "alliance") throw new IllegalActionError(`You are not allied with ${String(other)}`);
+  let next = withoutTreaty(state, me, other);
+  next = adjustReputation(next, ruleSet, me, -ruleSet.diplomacy.leaveAllianceCost);
+  next = { ...next, callsToArms: (next.callsToArms ?? []).filter((c) => !(c.ally === me && c.partner === other)), tick: next.tick + 1 };
+  return { state: next, events: [{ type: "TREATY_ENDED", kind: "alliance", a: me, b: other, reason: "left" }] };
+}
+
+/** Move `payment` from `payer` to `payee` (negative: the other way). */
+function transfer(state: GameState, payer: PowerId, payee: PowerId, payment: number): GameState {
+  if (payment === 0) return state;
+  const [src, dst] = payment > 0 ? [payer, payee] : [payee, payer];
+  const amount = Math.abs(payment);
+  const p = getPowerState(state, src);
+  if (p.treasury < amount) throw new IllegalActionError(`${String(src)} can no longer pay ${amount}`);
+  let next = withPower(state, { ...p, treasury: p.treasury - amount });
+  const q = getPowerState(next, dst);
+  next = withPower(next, { ...q, treasury: q.treasury + amount });
+  return next;
+}
+
+/**
+ * Season upkeep: pacts that ran their term end (both sides gain reputation),
+ * stale proposals and calls lapse, and anything involving an eliminated power goes.
+ */
+export function tickDiplomacy(state: GameState, ruleSet: RuleSet): { state: GameState; events: GameEvent[] } {
+  const now = nowSeason(state);
+  const gone = (p: PowerId): boolean => state.powers[String(p)]?.eliminated ?? true;
+  const events: GameEvent[] = [];
+  let next = state;
+  const keep: Treaty[] = [];
+  for (const t of state.treaties ?? []) {
+    if (gone(t.a) || gone(t.b)) continue;
+    if (t.until !== null && t.until <= now) {
+      events.push({ type: "TREATY_ENDED", kind: t.kind, a: t.a, b: t.b, reason: "expired" });
+      next = adjustReputation(next, ruleSet, t.a, ruleSet.diplomacy.pactKeptGain);
+      next = adjustReputation(next, ruleSet, t.b, ruleSet.diplomacy.pactKeptGain);
+      continue;
+    }
+    keep.push(t);
+  }
+  return {
+    state: {
+      ...next,
+      treaties: keep,
+      proposals: (next.proposals ?? []).filter((p) => p.expires >= now && !gone(p.from) && !gone(p.to)),
+      callsToArms: (next.callsToArms ?? []).filter((c) => c.expires >= now && !gone(c.ally) && !gone(c.partner) && !gone(c.enemy)),
+      peaceOffers: (next.peaceOffers ?? []).filter((o) => !gone(o.from) && !gone(o.to)),
+    },
+    events,
+  };
 }
 
 function adjustReputation(state: GameState, ruleSet: RuleSet, power: PowerId, delta: number): GameState {
@@ -104,11 +360,9 @@ export function declareWarAction(
 ): { state: GameState; events: GameEvent[] } {
   const blocker = warBlocker(state, by, target);
   if (blocker !== null) throw new IllegalActionError(blocker);
-  const cost = declareWarCost(state, ruleSet, target);
-  let next = startWar(state, by, target);
-  next = adjustReputation(next, ruleSet, by, -cost);
-  next = { ...next, tick: next.tick + 1 };
-  return { state: next, events: [{ type: "WAR_DECLARED", by, against: target, reputationLoss: cost }] };
+  const events: GameEvent[] = [];
+  const next = joinWar(state, ruleSet, by, target, declareWarCost(state, ruleSet, by, target), "declared", events);
+  return { state: { ...next, tick: next.tick + 1 }, events };
 }
 
 export function offerPeaceAction(
@@ -204,7 +458,13 @@ export function recoverReputation(state: GameState, ruleSet: RuleSet): GameState
     const now = rep[String(p.id)] ?? d.reputationStart;
     if (now < d.reputationStart) rep[String(p.id)] = Math.min(d.reputationStart, now + d.recoveryPerYear);
   }
-  return { ...state, reputation: rep };
+  // Goodwill fades by a fifth each year.
+  const goodwill: Record<string, number> = {};
+  for (const [k, v] of Object.entries(state.goodwill ?? {})) {
+    const faded = Math.round(v * 0.8 * 10) / 10;
+    if (Math.abs(faded) >= 0.5) goodwill[k] = faded;
+  }
+  return { ...state, reputation: rep, goodwill };
 }
 
 /** Peace offers waiting for `power` to answer. */

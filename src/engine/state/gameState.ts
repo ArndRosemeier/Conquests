@@ -104,6 +104,43 @@ export interface PeaceOffer {
   readonly payment: number;
 }
 
+export type TreatyKind = "pact" | "alliance";
+
+/** A treaty between two powers. A pact ends at `until` (absolute season); an alliance has none. */
+export interface Treaty {
+  readonly kind: TreatyKind;
+  readonly a: PowerId;
+  readonly b: PowerId;
+  readonly since: number;
+  readonly until: number | null;
+}
+
+/**
+ * A proposal waiting for `to` to answer. `payment` is what the proposer pays on
+ * acceptance (negative: what it asks for). Kinds:
+ * - "pact": a non-aggression pact for `years`.
+ * - "alliance".
+ * - "aid": whichever of the two is not at war with `enemy` declares war on it.
+ */
+export interface Proposal {
+  readonly kind: "pact" | "alliance" | "aid";
+  readonly from: PowerId;
+  readonly to: PowerId;
+  readonly payment: number;
+  readonly years: number;
+  readonly enemy: PowerId | null;
+  /** Absolute season after which the proposal lapses. */
+  readonly expires: number;
+}
+
+/** `enemy` declared war on `partner`; `ally` must join or refuse. */
+export interface CallToArms {
+  readonly ally: PowerId;
+  readonly partner: PowerId;
+  readonly enemy: PowerId;
+  readonly expires: number;
+}
+
 /**
  * A single espionage snapshot: what a power learned about an area at the moment
  * it spied. This is deliberately a frozen point-in-time observation, never a live
@@ -160,6 +197,14 @@ export interface GameState {
   /** Each power's standing in the eyes of the world (see DiplomacyRules). */
   readonly reputation: Readonly<Record<string, number>>;
   readonly peaceOffers: readonly PeaceOffer[];
+  /** Non-aggression pacts and alliances in force. */
+  readonly treaties: readonly Treaty[];
+  /** Treaty and war-aid proposals waiting for an answer. */
+  readonly proposals: readonly Proposal[];
+  /** Allies that must decide whether to join a war declared on their partner. */
+  readonly callsToArms: readonly CallToArms[];
+  /** Goodwill from gifts and kept promises, keyed "a>b" (what a has earned with b). */
+  readonly goodwill: Readonly<Record<string, number>>;
   /** What each power has learned about foreign garrisons through spying. */
   readonly intel: IntelTable;
   readonly rngState: number;

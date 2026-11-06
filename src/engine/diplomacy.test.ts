@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { knobs } from "../controllers/ai/persona.ts";
 import { CLASSIC_RULESET, ENGLAND, FRANCE, GERMANY } from "./ruleset/classic.ts";
 import { resolveCombat } from "./state/combat.ts";
-import { reputationOf, truceUntil, warBalance } from "./state/diplomacy.ts";
+import { alliesOf, callsTo, reputationOf, treatyBetween, truceUntil, warBalance } from "./state/diplomacy.ts";
+import { opinionOf } from "./state/opinion.ts";
+import { advanceAfterCombat } from "./state/turn.ts";
 import type { AreaState, GameState } from "./state/gameState.ts";
 import { getAreaState, getPowerState, isAtWar, withArea } from "./state/helpers.ts";
 import { reduce } from "./state/reducer.ts";
@@ -48,7 +50,7 @@ describe("diplomacy", () => {
   it("declaring war costs reputation and allows the attack", () => {
     const { s, from, target } = border(game());
     const declared = act(s, GERMANY, { type: "DECLARE_WAR", target: FRANCE });
-    expect(declared.events).toContainEqual({ type: "WAR_DECLARED", by: GERMANY, against: FRANCE, reputationLoss: D.declareWarCost });
+    expect(declared.events).toContainEqual({ type: "WAR_DECLARED", by: GERMANY, against: FRANCE, reputationLoss: D.declareWarCost, reason: "declared" });
     expect(isAtWar(declared.state, GERMANY, FRANCE)).toBe(true);
     expect(reputationOf(declared.state, R, GERMANY)).toBe(D.reputationStart - D.declareWarCost);
     const moved = act(declared.state, GERMANY, { type: "MOVE_ARMY", from, to: target, troops: 150_000 });
@@ -87,5 +89,53 @@ describe("diplomacy", () => {
     expect(reputationOf(s, R, GERMANY)).toBe(D.reputationStart);
     const back = deserializeGame(serializeGame(s));
     expect(back.warSince).toEqual(s.warSince);
+  });
+
+  it("a pact is signed with payment, raises opinion, and breaking it costs extra reputation", () => {
+    let s = act(game(), GERMANY, { type: "PROPOSE", to: FRANCE, kind: "pact", payment: 1_000_000, years: 3, enemy: null }).state;
+    const before = opinionOf(s, R, W, FRANCE, GERMANY).value;
+    s = act(s, FRANCE, { type: "ANSWER_PROPOSAL", from: GERMANY, kind: "pact", accept: true }).state;
+    expect(treatyBetween(s, GERMANY, FRANCE)?.kind).toBe("pact");
+    expect(opinionOf(s, R, W, FRANCE, GERMANY).value).toBeGreaterThan(before);
+    const broken = act(s, GERMANY, { type: "DECLARE_WAR", target: FRANCE });
+    expect(broken.events).toContainEqual({ type: "TREATY_ENDED", kind: "pact", a: GERMANY, b: FRANCE, reason: "broken" });
+    expect(reputationOf(broken.state, R, GERMANY)).toBe(D.reputationStart - D.declareWarCost - D.pactBreakCost);
+  });
+
+  it("pacts expire after their term and both sides gain reputation", () => {
+    let s = act(game(), GERMANY, { type: "PROPOSE", to: FRANCE, kind: "pact", payment: 0, years: 3, enemy: null }).state;
+    s = act(s, FRANCE, { type: "ANSWER_PROPOSAL", from: GERMANY, kind: "pact", accept: true }).state;
+    for (let i = 0; i < 12; i += 1) s = advanceAfterCombat({ ...s, stage: "COMBAT", activePower: null }, R, W).state;
+    expect(treatyBetween(s, GERMANY, FRANCE)).toBeUndefined();
+    expect(reputationOf(s, R, GERMANY)).toBe(D.reputationStart + D.pactKeptGain);
+  });
+
+  it("an attack on an ally raises a call to arms; joining gains reputation, refusing ends the alliance", () => {
+    let s = act(game(), ENGLAND, { type: "PROPOSE", to: FRANCE, kind: "alliance", payment: 0, years: 0, enemy: null }).state;
+    s = act(s, FRANCE, { type: "ANSWER_PROPOSAL", from: ENGLAND, kind: "alliance", accept: true }).state;
+    expect(alliesOf(s, FRANCE)).toEqual([ENGLAND]);
+    const attacked = act(s, GERMANY, { type: "DECLARE_WAR", target: FRANCE });
+    expect(attacked.events).toContainEqual({ type: "CALL_TO_ARMS", ally: ENGLAND, partner: FRANCE, enemy: GERMANY });
+    s = attacked.state;
+    expect(callsTo(s, ENGLAND)).toHaveLength(1);
+    expect(() => act(s, ENGLAND, { type: "END_TURN" })).toThrow(/call to arms/);
+
+    const joined = act(s, ENGLAND, { type: "ANSWER_CALL", partner: FRANCE, join: true }).state;
+    expect(isAtWar(joined, ENGLAND, GERMANY)).toBe(true);
+    expect(reputationOf(joined, R, ENGLAND)).toBe(D.reputationStart + D.answerCallGain);
+
+    const refused = act(s, ENGLAND, { type: "ANSWER_CALL", partner: FRANCE, join: false }).state;
+    expect(isAtWar(refused, ENGLAND, GERMANY)).toBe(false);
+    expect(treatyBetween(refused, ENGLAND, FRANCE)).toBeUndefined();
+    expect(reputationOf(refused, R, ENGLAND)).toBe(D.reputationStart - D.refuseCallCost);
+  });
+
+  it("war aid: a paid helper joins the war", () => {
+    let s = act(game(), GERMANY, { type: "DECLARE_WAR", target: FRANCE }).state;
+    s = act(s, FRANCE, { type: "PROPOSE", to: ENGLAND, kind: "aid", payment: 2_000_000, years: 0, enemy: GERMANY }).state;
+    const treasury = getPowerState(s, ENGLAND).treasury;
+    s = act(s, ENGLAND, { type: "ANSWER_PROPOSAL", from: FRANCE, kind: "aid", accept: true }).state;
+    expect(isAtWar(s, ENGLAND, GERMANY)).toBe(true);
+    expect(getPowerState(s, ENGLAND).treasury).toBe(treasury + 2_000_000);
   });
 });

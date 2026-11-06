@@ -4,7 +4,7 @@ import { resolveCombat } from "./combat.ts";
 import type { GameEvent } from "./events.ts";
 import type { GameState } from "./gameState.ts";
 import { allAreas, withPower } from "./helpers.ts";
-import { recoverReputation } from "./diplomacy.ts";
+import { recoverReputation, tickDiplomacy } from "./diplomacy.ts";
 import { beginNextTurn } from "./phases.ts";
 import { annualIncomeFor, applyAnnualEconomy, checkWinner } from "./scoring.ts";
 
@@ -33,6 +33,9 @@ export function advanceAfterCombat(
   }
 
   next = beginNextTurn(next, ruleSet);
+  const upkeep = tickDiplomacy(next, ruleSet);
+  events.push(...upkeep.events);
+  next = upkeep.state;
   if (next.season === "SPRING") {
     for (const power of ruleSet.playOrder) {
       const p = next.powers[String(power)];

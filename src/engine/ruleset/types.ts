@@ -112,6 +112,22 @@ export interface DiplomacyRules {
   readonly recoveryPerYear: number;
   /** War balance points for each battle won against the enemy (plus the VP of land taken). */
   readonly warPointsPerBattle: number;
+  /** Lengths, in years, a non-aggression pact can be signed for. */
+  readonly pactYears: readonly number[];
+  /** Extra reputation lost for declaring war on a pact partner (on top of the declaration). */
+  readonly pactBreakCost: number;
+  /** Extra reputation lost for declaring war on an ally. */
+  readonly allyBetrayalCost: number;
+  /** Reputation lost for leaving an alliance. */
+  readonly leaveAllianceCost: number;
+  /** Reputation lost for refusing an ally's call to arms (the alliance also ends). */
+  readonly refuseCallCost: number;
+  /** Reputation gained for answering an ally's call to arms. */
+  readonly answerCallGain: number;
+  /** Reputation gained by both sides when a pact runs its full term. */
+  readonly pactKeptGain: number;
+  /** Seasons a call to arms or treaty offer stays open. */
+  readonly offerSeasons: number;
 }
 
 /**

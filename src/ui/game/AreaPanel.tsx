@@ -7,8 +7,8 @@ import { canBuild, canDiplomacy, canEspionage, canSubvert } from "../../engine/s
 import { isFoundingTurn } from "../../engine/state/phases.ts";
 import {
   declareWarCost,
-  offersTo,
   reputationOf,
+  treatyBetween,
   truceUntil,
   warBalance,
   warBlocker,
@@ -16,6 +16,7 @@ import {
 import type { AreaId, PowerId } from "../../engine/types.ts";
 import { getArea } from "../../engine/world/classic.ts";
 import { lookOf, money, powerColor, powerName, troops } from "../content/powers.ts";
+import { seasonLabel, termsLabel } from "./Diplomacy.tsx";
 import { intelAgeLabel, terrainLabel } from "../labels.ts";
 import { useGame } from "../store.ts";
 
@@ -186,6 +187,7 @@ function Actions({ area, yourTurn }: { area: AreaId; yourTurn: boolean }): React
   const neutralPower = getPowerState(gs, owner).control === "neutral";
   const atWar = isAtWar(gs, me, owner);
   const truce = truceUntil(gs, me, owner);
+  const treaty = treatyBetween(gs, me, owner);
   const myOffer = (gs.peaceOffers ?? []).find((o) => o.from === me && o.to === owner);
   const theirOffer = (gs.peaceOffers ?? []).find((o) => o.from === owner && o.to === me);
   const balance = warBalance(gs, me, owner);
@@ -199,7 +201,11 @@ function Actions({ area, yourTurn }: { area: AreaId; yourTurn: boolean }): React
           ? `${name} is not in this game; its land can be taken without a war.`
           : atWar
             ? `You are at war with ${name}. ${balance > 0 ? `You are winning (+${balance}).` : balance < 0 ? `You are losing (${balance}).` : "Neither side leads."}`
-            : truce !== null
+            : treaty?.kind === "alliance"
+              ? `${name} is your ally. Declaring war on an ally is the worst betrayal.`
+              : treaty?.kind === "pact"
+                ? `Non-aggression pact with ${name} until ${seasonLabel(gs, treaty.until!)}. Attacking breaks it.`
+                : truce !== null
               ? `Truce with ${name} until ${seasonLabel(gs, truce)}. No war until then.`
               : `At peace with ${name}. You must declare war before you can attack.`}
       </p>
@@ -207,7 +213,7 @@ function Actions({ area, yourTurn }: { area: AreaId; yourTurn: boolean }): React
         <ActionButton
           icon="⚔"
           title="Declare war"
-          sub={`Your reputation −${declareWarCost(gs, ruleSet, owner)} (now ${reputationOf(gs, ruleSet, me)})`}
+          sub={`Your reputation −${declareWarCost(gs, ruleSet, me, owner)} (now ${reputationOf(gs, ruleSet, me)})`}
           disabled={notYet ?? blocker}
           onClick={() => play({ type: "DECLARE_WAR", target: owner })}
         />
@@ -299,19 +305,6 @@ function BuyRow({ icon, title, unit, unitLabel, cost, treasury, disabled, onBuy 
 const PEACE_PAYMENTS = [500_000, 1_000_000, 2_000_000, 4_000_000];
 const PEACE_DEMANDS = [1_000_000, 3_000_000];
 
-function termsLabel(payment: number, mine: boolean): string {
-  if (payment === 0) return "no payment";
-  if (payment > 0) return mine ? `you pay ${money(payment)}` : `they pay you ${money(payment)}`;
-  return mine ? `you demand ${money(-payment)}` : `they demand ${money(-payment)}`;
-}
-
-/** "Spring 1884" for an absolute season index. */
-function seasonLabel(gs: { startYear: number }, abs: number): string {
-  const year = Math.floor(abs / 4);
-  const season = ["Spring", "Summer", "Fall", "Winter"][abs % 4]!;
-  return `${season} ${gs.startYear + year - 1}`;
-}
-
 function PeaceAnswer({ from, payment, disabled }: { from: PowerId; payment: number; disabled: string | null }): React.JSX.Element {
   const play = useGame((s) => s.play);
   const ruleSet = useGame((s) => s.ruleSet);
@@ -330,20 +323,6 @@ function PeaceAnswer({ from, payment, disabled }: { from: PowerId; payment: numb
           <button className="chip" onClick={() => play({ type: "ANSWER_PEACE", from, accept: false })}>Refuse</button>
         </div>
       )}
-    </div>
-  );
-}
-
-/** Peace offers waiting for the player, shown on their turn wherever they are on the map. */
-export function PeaceOffers(): React.JSX.Element | null {
-  const gs = useGame((s) => s.gameState);
-  const me = useGame((s) => s.humanPower);
-  if (gs === null || me === null || gs.stage !== "PLAYER" || gs.activePower !== me || gs.winner !== null) return null;
-  const offers = offersTo(gs, me);
-  if (offers.length === 0) return null;
-  return (
-    <div className="peace-offers glass">
-      {offers.map((o) => <PeaceAnswer key={String(o.from)} from={o.from} payment={o.payment} disabled={null} />)}
     </div>
   );
 }

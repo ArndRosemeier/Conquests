@@ -17,6 +17,17 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.04",
+    date: "2026-11-06",
+    notes: [
+      "Treaties: non-aggression pacts for 3 or 5 years, and alliances. Breaking a pact or betraying an ally costs dearly in reputation.",
+      "Calls to arms: when your ally is attacked you must join the war or refuse. Joining raises your reputation, refusing ruins it and ends the alliance.",
+      "War aid: ask another power to join your war, or accept its offer, for a price.",
+      "The new Diplomacy panel (🕊 or D) shows where you stand with every power and what each computer rival thinks of you, and why.",
+      "Computer rivals now propose pacts and alliances, answer calls to arms by their sense of honor, and charge for their help.",
+    ],
+  },
+  {
     version: "1.03",
     date: "2026-11-06",
     notes: [

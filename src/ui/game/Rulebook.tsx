@@ -9,6 +9,7 @@ import {
 } from "../../engine/state/combat.ts";
 import { estimateBattle } from "../../engine/state/combatSim.ts";
 import { DIPLOMAT } from "../../controllers/ai/diplomat.ts";
+import { OPINION } from "../../engine/state/opinion.ts";
 import {
   HIST_VP_BY_VALUE,
   INCOME_BY_VALUE,
@@ -366,6 +367,22 @@ function DiplomacyPage({ rs }: { rs: RuleSet }): React.JSX.Element {
         <li>Every peace starts a <b>truce of {d.truceSeasons / 4} years</b>, during which neither side can declare war.</li>
       </ul>
 
+      <h3>Treaties</h3>
+      <p>Open the Diplomacy panel (🕊 button, or press D) to propose them. Proposals stay open for {d.offerSeasons} seasons and may carry a payment either way.</p>
+      <ul>
+        <li><b>Non-aggression pact</b> for {d.pactYears.join(" or ")} years. Attacking a pact partner is allowed but costs {d.pactBreakCost} reputation on top of the declaration. A pact that runs its full term gives both sides +{d.pactKeptGain}.</li>
+        <li><b>Alliance</b>, no end date. When an ally is attacked, you get a <b>call to arms</b> and must answer before ending your turn: join the war for +{d.answerCallGain} reputation, or refuse for −{d.refuseCallCost} and the alliance ends. Leaving an alliance costs {d.leaveAllianceCost}; attacking an ally costs {d.allyBetrayalCost} on top of the declaration.</li>
+        <li><b>War aid</b>: ask a power to join your war, or offer to join someone else's, for a price. Joining for a treaty partner costs no reputation; joining anyone else's war costs a normal declaration. Allies and helpers may join even during a truce with the enemy.</li>
+        <li>Joining a war also calls the enemy's allies to arms, so wars can spread.</li>
+      </ul>
+
+      <h3>Opinion</h3>
+      <p>Each computer power holds an opinion of every other power, from −100 to 100. The Diplomacy panel shows it with its reasons:</p>
+      <Formula>
+        borders {OPINION.perBorder} each (at most {OPINION.borderCap}) · at war {OPINION.atWar} · recent war {OPINION.recentWar} · leads the race {OPINION.leader} · common enemy +{OPINION.sharedEnemy} · pact +{OPINION.pact} · alliance +{OPINION.alliance} · ({num(OPINION.perReputation)} × reputation above or below {d.reputationStart}) · goodwill
+      </Formula>
+      <p>Goodwill comes from gifts (1 point per $100k, at most 20 a gift) and answered calls, and fades by a fifth each year.</p>
+
       <h3>Reputation</h3>
       <p>
         Every power starts with {d.reputationStart} (scale 0 to {d.reputationMax}) and regains {d.recoveryPerYear} each spring, up to {d.reputationStart}.
@@ -397,6 +414,12 @@ function DiplomacyPage({ rs }: { rs: RuleSet }): React.JSX.Element {
         payment ÷ {money(g.dollarsPerPoint)} + {num(g.wearinessPerSeason)} × seasons at war + {g.otherWarPressure} × other wars − balance × (0.5 + aggression) − 6 + (honor − 0.5) × 10
       </Formula>
       <p>It offers peace itself when its balance falls to {g.sueBelow} or below, and may demand tribute when well ahead.</p>
+      <ul>
+        <li>The war chance is also multiplied by (1 − opinion ÷ 120), between 0.25 and 2; by {num(g.pactWarFactor)} × (1 − honor) against a pact partner and {num(g.allyWarFactor)} × (1 − honor) against an ally.</li>
+        <li><b>Treaties</b>: it accepts a pact when opinion + payment ÷ {money(g.dollarsPerPoint)} (+15 if at war elsewhere, +10 if you are bigger, + honor, − aggression) reaches {g.pactAt}; an alliance needs opinion {g.allianceAt} or more and a common enemy (or opinion {g.allianceAt + 25}).</li>
+        <li><b>Calls to arms</b>: it joins when honor × 60 + opinion of the ally ÷ 2 + 10 (+20 if refusing would ruin its reputation, −25 if the enemy is far bigger, −15 per war it already fights) reaches {g.joinCallAt}.</li>
+        <li><b>War aid price</b>: {money(g.aidBasePrice)} × (1 − 0.6 × its opinion of you) × (1 + 0.5 × its opinion of the enemy) × (1 − 0.4 × honor), halved for a treaty partner (opinions as −1 to 1). The panel shows the price before you ask.</li>
+      </ul>
     </>
   );
 }

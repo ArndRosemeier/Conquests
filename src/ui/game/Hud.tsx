@@ -107,6 +107,7 @@ export function TopBar(): React.JSX.Element | null {
       <div className="topbar-right">
         <ViewToggle />
         <WhatsNewButton />
+        <button className="icon-btn" title="Diplomacy (D)" onClick={() => setPanel("diplomacy")}>🕊</button>
         <button className="icon-btn" title="How to play" onClick={() => setPanel("guide")}>?</button>
         <button className="icon-btn" title="Menu" onClick={() => setPanel("menu")}>☰</button>
       </div>

@@ -32,6 +32,19 @@ export type Action =
   | { readonly type: "OFFER_PEACE"; readonly target: PowerId; readonly payment: number }
   /** Accept or refuse a peace offer made to you. */
   | { readonly type: "ANSWER_PEACE"; readonly from: PowerId; readonly accept: boolean }
+  /** Propose a non-aggression pact, an alliance, or war aid against `enemy`. `payment` is paid on acceptance (negative = asked for). */
+  | {
+      readonly type: "PROPOSE";
+      readonly to: PowerId;
+      readonly kind: "pact" | "alliance" | "aid";
+      readonly payment: number;
+      readonly years: number;
+      readonly enemy: PowerId | null;
+    }
+  | { readonly type: "ANSWER_PROPOSAL"; readonly from: PowerId; readonly kind: "pact" | "alliance" | "aid"; readonly accept: boolean }
+  /** Join (or refuse) an ally's war after it was attacked. */
+  | { readonly type: "ANSWER_CALL"; readonly partner: PowerId; readonly join: boolean }
+  | { readonly type: "LEAVE_ALLIANCE"; readonly ally: PowerId }
   /** Finish the active power's turn. */
   | { readonly type: "END_TURN" };
 
