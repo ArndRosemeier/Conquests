@@ -16,7 +16,7 @@ import {
 import type { AreaId, PowerId } from "../../engine/types.ts";
 import { getArea } from "../../engine/world/classic.ts";
 import { lookOf, money, powerColor, powerName, troops } from "../content/powers.ts";
-import { seasonLabel, termsLabel } from "./Diplomacy.tsx";
+import { PeaceComposer, peaceTermsLabel, seasonLabel } from "./Diplomacy.tsx";
 import { intelAgeLabel, terrainLabel } from "../labels.ts";
 import { useGame } from "../store.ts";
 
@@ -218,9 +218,9 @@ function Actions({ area, yourTurn }: { area: AreaId; yourTurn: boolean }): React
           onClick={() => play({ type: "DECLARE_WAR", target: owner })}
         />
       )}
-      {atWar && theirOffer && <PeaceAnswer from={owner} payment={theirOffer.payment} disabled={notYet} />}
+      {atWar && theirOffer && <PeaceAnswer from={owner} terms={peaceTermsLabel(theirOffer, me, world)} disabled={notYet} />}
       {atWar && !theirOffer && myOffer && (
-        <p className="hint">Peace offer sent ({termsLabel(myOffer.payment, true)}). {name} answers on its turn.</p>
+        <p className="hint">Peace offer sent ({peaceTermsLabel(myOffer, me, world)}). {name} answers on its turn.</p>
       )}
       {atWar && !theirOffer && !myOffer && (
         <div className={`buy${notYet ? " is-off" : ""}`}>
@@ -231,17 +231,7 @@ function Actions({ area, yourTurn }: { area: AreaId; yourTurn: boolean }): React
               <small>{notYet ?? `${name} answers on its turn. Then ${ruleSet.diplomacy.truceSeasons / 4} years of truce.`}</small>
             </span>
           </div>
-          {!notYet && (
-            <div className="chips">
-              <button className="chip" onClick={() => play({ type: "OFFER_PEACE", target: owner, payment: 0 })}>No payment</button>
-              {PEACE_PAYMENTS.filter((a) => a <= treasury).map((a) => (
-                <button key={a} className="chip" onClick={() => play({ type: "OFFER_PEACE", target: owner, payment: a })}>Pay {money(a)}</button>
-              ))}
-              {balance > 0 && PEACE_DEMANDS.map((a) => (
-                <button key={`d${a}`} className="chip" onClick={() => play({ type: "OFFER_PEACE", target: owner, payment: -a })}>Demand {money(a)}</button>
-              ))}
-            </div>
-          )}
+          {!notYet && <PeaceComposer key={String(area)} target={owner} focus={area} />}
         </div>
       )}
       <ActionButton
@@ -302,10 +292,7 @@ function BuyRow({ icon, title, unit, unitLabel, cost, treasury, disabled, onBuy 
   );
 }
 
-const PEACE_PAYMENTS = [500_000, 1_000_000, 2_000_000, 4_000_000];
-const PEACE_DEMANDS = [1_000_000, 3_000_000];
-
-function PeaceAnswer({ from, payment, disabled }: { from: PowerId; payment: number; disabled: string | null }): React.JSX.Element {
+function PeaceAnswer({ from, terms, disabled }: { from: PowerId; terms: string; disabled: string | null }): React.JSX.Element {
   const play = useGame((s) => s.play);
   const ruleSet = useGame((s) => s.ruleSet);
   return (
@@ -314,7 +301,7 @@ function PeaceAnswer({ from, payment, disabled }: { from: PowerId; payment: numb
         <span className="action-icon">🕊</span>
         <span className="action-text">
           <b>{powerName(ruleSet.powers, from)} offers peace</b>
-          <small>{disabled ?? `Terms: ${termsLabel(payment, false)}.`}</small>
+          <small>{disabled ?? `Terms: ${terms}.`}</small>
         </span>
       </div>
       {!disabled && (

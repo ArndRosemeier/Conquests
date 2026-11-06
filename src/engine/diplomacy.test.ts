@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { knobs } from "../controllers/ai/persona.ts";
 import { CLASSIC_RULESET, ENGLAND, FRANCE, GERMANY } from "./ruleset/classic.ts";
 import { resolveCombat } from "./state/combat.ts";
-import { alliesOf, callsTo, reputationOf, treatyBetween, truceUntil, warBalance } from "./state/diplomacy.ts";
+import { alliesOf, callsTo, coalitionAgainst, reputationOf, tradeableAreas, treatyBetween, truceUntil, warBalance } from "./state/diplomacy.ts";
 import { opinionOf } from "./state/opinion.ts";
 import { advanceAfterCombat } from "./state/turn.ts";
 import type { AreaState, GameState } from "./state/gameState.ts";
@@ -64,7 +64,7 @@ describe("diplomacy", () => {
     const before = getPowerState(s, GERMANY).treasury + getPowerState(s, FRANCE).treasury;
     s = act(s, GERMANY, { type: "OFFER_PEACE", target: FRANCE, payment: 500_000 }).state;
     const { state, events } = act(s, FRANCE, { type: "ANSWER_PEACE", from: GERMANY, accept: true });
-    expect(events).toContainEqual({ type: "WAR_ENDED", by: GERMANY, against: FRANCE, payment: 500_000 });
+    expect(events).toContainEqual({ type: "WAR_ENDED", by: GERMANY, against: FRANCE, payment: 500_000, ceded: [], gained: [] });
     expect(isAtWar(state, GERMANY, FRANCE)).toBe(false);
     expect(getPowerState(state, FRANCE).treasury + getPowerState(state, GERMANY).treasury).toBe(before);
     expect(truceUntil(state, GERMANY, FRANCE)).not.toBeNull();
@@ -137,5 +137,61 @@ describe("diplomacy", () => {
     s = act(s, ENGLAND, { type: "ANSWER_PROPOSAL", from: FRANCE, kind: "aid", accept: true }).state;
     expect(isAtWar(s, ENGLAND, GERMANY)).toBe(true);
     expect(getPowerState(s, ENGLAND).treasury).toBe(treasury + 2_000_000);
+  });
+
+  it("peace terms can hand over territory; home supply centers cannot be traded", () => {
+    let s = act(game(), GERMANY, { type: "DECLARE_WAR", target: FRANCE }).state;
+    const french = W.areas.filter((a) => getAreaState(s, a.id).owner === FRANCE);
+    const capital = french.find((a) => getAreaState(s, a.id).supplyCenterOf === FRANCE)!.id;
+    expect(() => act(s, GERMANY, { type: "OFFER_PEACE", target: FRANCE, payment: 0, demand: [capital] })).toThrow(/supply centers/);
+    const area = tradeableAreas(s, FRANCE)[0]!;
+    s = set(s, area, { troops: 40_000 });
+    const frenchTroops = (st: GameState): number => W.areas.reduce((n, a) => n + (getAreaState(st, a.id).owner === FRANCE ? getAreaState(st, a.id).troops : 0), 0);
+    const before = frenchTroops(s);
+    const scoreBefore = getPowerState(s, GERMANY).score;
+    s = act(s, GERMANY, { type: "OFFER_PEACE", target: FRANCE, payment: 0, demand: [area] }).state;
+    const { state, events } = act(s, FRANCE, { type: "ANSWER_PEACE", from: GERMANY, accept: true });
+    expect(events).toContainEqual({ type: "WAR_ENDED", by: GERMANY, against: FRANCE, payment: 0, ceded: [], gained: [area] });
+    expect(getAreaState(state, area).owner).toBe(GERMANY);
+    expect(getAreaState(state, area).troops).toBe(R.limits.minGarrison);
+    expect(getPowerState(state, GERMANY).score).toBe(scoreBefore + getAreaState(s, area).victoryValue);
+    // The French garrison withdrew next door instead of vanishing.
+    expect(frenchTroops(state)).toBe(before - 40_000 + (neighborsOf(W, area).some((n) => getAreaState(s, n).owner === FRANCE) ? 40_000 : 0));
+    expect(isAtWar(state, GERMANY, FRANCE)).toBe(false);
+  });
+
+  it("an offer fails if a promised area changed hands", () => {
+    let s = act(game(), GERMANY, { type: "DECLARE_WAR", target: FRANCE }).state;
+    const area = tradeableAreas(s, FRANCE)[0]!;
+    s = act(s, GERMANY, { type: "OFFER_PEACE", target: FRANCE, payment: 0, demand: [area] }).state;
+    s = set(s, area, { owner: ENGLAND });
+    expect(() => act(s, FRANCE, { type: "ANSWER_PEACE", from: GERMANY, accept: true })).toThrow(IllegalActionError);
+  });
+
+  it("coalitions: only against a pariah; members gain reputation; a separate peace costs", () => {
+    let s = game();
+    expect(() => act(s, ENGLAND, { type: "JOIN_COALITION", target: GERMANY })).toThrow(/reputation below/);
+    s = { ...s, reputation: { ...s.reputation, [String(GERMANY)]: 10 } };
+    const joined = act(s, ENGLAND, { type: "JOIN_COALITION", target: GERMANY });
+    expect(joined.events[0]).toEqual({ type: "COALITION_JOINED", power: ENGLAND, target: GERMANY, founded: true, members: 1 });
+    expect(isAtWar(joined.state, ENGLAND, GERMANY)).toBe(true);
+    expect(reputationOf(joined.state, R, ENGLAND)).toBe(D.reputationStart - D.declareWarOnPariahCost + D.coalitionJoinGain);
+    s = act(joined.state, FRANCE, { type: "JOIN_COALITION", target: GERMANY }).state;
+    expect(coalitionAgainst(s, GERMANY)?.members).toEqual([ENGLAND, FRANCE]);
+
+    // France makes a separate peace while England fights on.
+    s = act(s, GERMANY, { type: "OFFER_PEACE", target: FRANCE, payment: 0 }).state;
+    const rep = reputationOf(s, R, FRANCE);
+    const peace = act(s, FRANCE, { type: "ANSWER_PEACE", from: GERMANY, accept: true });
+    expect(peace.events).toContainEqual({ type: "COALITION_LEFT", power: FRANCE, target: GERMANY, reputationLoss: D.coalitionDesertCost });
+    expect(reputationOf(peace.state, R, FRANCE)).toBe(rep - D.coalitionDesertCost);
+    expect(coalitionAgainst(peace.state, GERMANY)?.members).toEqual([ENGLAND]);
+
+    // The last member's peace ends the coalition at no cost.
+    s = act(peace.state, GERMANY, { type: "OFFER_PEACE", target: ENGLAND, payment: 0 }).state;
+    const last = act(s, ENGLAND, { type: "ANSWER_PEACE", from: GERMANY, accept: true });
+    expect(last.events).toContainEqual({ type: "COALITION_LEFT", power: ENGLAND, target: GERMANY, reputationLoss: 0 });
+    expect(last.events).toContainEqual({ type: "COALITION_ENDED", target: GERMANY, reason: "peace" });
+    expect(coalitionAgainst(last.state, GERMANY)).toBeUndefined();
   });
 });

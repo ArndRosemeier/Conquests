@@ -28,8 +28,17 @@ export type Action =
     }
   /** Declare war on another power (costs reputation; blocked during a truce). */
   | { readonly type: "DECLARE_WAR"; readonly target: PowerId }
-  /** Offer peace to an enemy; `payment` is paid on acceptance (negative = demand tribute). */
-  | { readonly type: "OFFER_PEACE"; readonly target: PowerId; readonly payment: number }
+  /**
+   * Offer peace to an enemy; `payment` is paid on acceptance (negative = demand tribute).
+   * `cede` are areas you hand over, `demand` areas you ask for.
+   */
+  | {
+      readonly type: "OFFER_PEACE";
+      readonly target: PowerId;
+      readonly payment: number;
+      readonly cede?: readonly AreaId[];
+      readonly demand?: readonly AreaId[];
+    }
   /** Accept or refuse a peace offer made to you. */
   | { readonly type: "ANSWER_PEACE"; readonly from: PowerId; readonly accept: boolean }
   /** Propose a non-aggression pact, an alliance, or war aid against `enemy`. `payment` is paid on acceptance (negative = asked for). */
@@ -45,6 +54,8 @@ export type Action =
   /** Join (or refuse) an ally's war after it was attacked. */
   | { readonly type: "ANSWER_CALL"; readonly partner: PowerId; readonly join: boolean }
   | { readonly type: "LEAVE_ALLIANCE"; readonly ally: PowerId }
+  /** Join (or found) the coalition against a pariah, declaring war on it if needed. */
+  | { readonly type: "JOIN_COALITION"; readonly target: PowerId }
   /** Finish the active power's turn. */
   | { readonly type: "END_TURN" };
 

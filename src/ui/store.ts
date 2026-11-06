@@ -304,8 +304,14 @@ export const useGame = create<StoreState>((set, get) => {
           logLine(gs, `${pn(e.by)} declared war on ${pn(e.against)}`, "war");
           break;
         case "WAR_ENDED": {
-          const terms =
-            e.payment > 0 ? `${pn(e.by)} paid ${money(e.payment)}.` : e.payment < 0 ? `${pn(e.against)} paid ${money(-e.payment)} in tribute.` : "No money changed hands.";
+          const names = (ids: readonly AreaId[]): string => ids.map((a) => getArea(world, a).name).join(", ");
+          const land = [
+            e.ceded.length > 0 ? `${pn(e.by)} handed over ${names(e.ceded)}.` : "",
+            e.gained.length > 0 ? `${pn(e.against)} handed over ${names(e.gained)}.` : "",
+          ].filter(Boolean).join(" ");
+          const cash =
+            e.payment > 0 ? `${pn(e.by)} paid ${money(e.payment)}.` : e.payment < 0 ? `${pn(e.against)} paid ${money(-e.payment)} in tribute.` : land ? "" : "No money changed hands.";
+          const terms = [cash, land].filter(Boolean).join(" ");
           logLine(gs, `${pn(e.by)} and ${pn(e.against)} made peace. ${terms}`, "info");
           if (e.by === me || e.against === me) toast({ title: "Peace!", body: `The war between ${pn(e.by)} and ${pn(e.against)} is over. ${terms} Truce for ${ruleSet.diplomacy.truceSeasons / 4} years.`, tone: "good" });
           else toast({ title: `${pn(e.by)} and ${pn(e.against)} make peace`, body: terms, tone: "info" });
@@ -313,10 +319,32 @@ export const useGame = create<StoreState>((set, get) => {
         }
         case "PEACE_OFFERED":
           if (e.to === me) {
-            const terms = e.payment > 0 ? `They offer ${money(e.payment)}.` : e.payment < 0 ? `They demand ${money(-e.payment)}.` : "White peace, no payment.";
+            const names = (ids: readonly AreaId[]): string => ids.map((a) => getArea(world, a).name).join(", ");
+            const parts = [
+              e.payment > 0 ? `They offer ${money(e.payment)}.` : e.payment < 0 ? `They demand ${money(-e.payment)}.` : "",
+              e.cede.length > 0 ? `They hand over ${names(e.cede)}.` : "",
+              e.demand.length > 0 ? `They want ${names(e.demand)}.` : "",
+            ].filter(Boolean);
+            const terms = parts.length > 0 ? parts.join(" ") : "White peace, no payment.";
             toast({ title: `${pn(e.by)} offers peace`, body: `${terms} Answer on your turn.`, tone: "info" });
             sound.play("telegraph");
           }
+          break;
+        case "COALITION_JOINED":
+          if (e.target === me) {
+            toast({ title: e.founded ? `${pn(e.power)} leads a coalition against you` : `${pn(e.power)} joins the coalition against you`, body: "Your broken promises have united your rivals.", tone: "war" });
+            sound.play("drums", 0.6);
+          } else if (e.founded) {
+            toast({ title: `Coalition against ${pn(e.target)}`, body: `${pn(e.power)} takes up arms against ${pn(e.target)}. Others may join from the Diplomacy panel.`, tone: "war" });
+          }
+          logLine(gs, `${pn(e.power)} ${e.founded ? "founded" : "joined"} the coalition against ${pn(e.target)}`, "war");
+          break;
+        case "COALITION_LEFT":
+          if (e.reputationLoss > 0) logLine(gs, `${pn(e.power)} made a separate peace and left the coalition against ${pn(e.target)}`, "info");
+          break;
+        case "COALITION_ENDED":
+          if (e.target === me) toast({ title: "The coalition against you has broken up", tone: "good" });
+          logLine(gs, `The coalition against ${pn(e.target)} broke up`, "info");
           break;
         case "PEACE_DECLINED":
           if (e.offerer === me) toast({ title: `${pn(e.by)} refused your peace offer`, body: "The war goes on.", tone: "bad" });

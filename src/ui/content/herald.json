@@ -217,5 +217,19 @@
   "{attacker} Honours Alliance, Declares For {defender}; Enemies Recalculate",
   "Shoulder To Shoulder: {attacker} Joins {defender}'s War",
   "{attacker} Keeps Faith With {defender}; Reputation Soars"
+ ],
+ "coalition": [
+  "Enough! {attacker} Leads The World Against {defender}",
+  "Coalition Forms Against {defender}; {attacker} First To Sign",
+  "The Powers Close Ranks: {attacker} Takes Up Arms Against {defender}",
+  "{defender}'s Neighbours Lose Patience; {attacker} Raises The Banner",
+  "Grand Coalition! {attacker} Rallies The Nations Against {defender}"
+ ],
+ "peace_land": [
+  "Peace Signed; {defender} Hands {area} To {attacker}",
+  "{attacker} Takes {area} At The Treaty Table",
+  "Ink, Not Blood: {area} Changes Flags As {attacker} And {defender} Make Peace",
+  "{area} Wakes Up Under New Management After {attacker}-{defender} Treaty",
+  "The Price Of Peace: {defender} Cedes {area} To {attacker}"
  ]
 }

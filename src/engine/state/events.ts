@@ -84,8 +84,23 @@ export type GameEvent =
       readonly by: PowerId;
       readonly against: PowerId;
       readonly payment: number;
+      /** Areas `by` handed to `against`, and areas `against` handed to `by`. */
+      readonly ceded: readonly AreaId[];
+      readonly gained: readonly AreaId[];
     }
-  | { readonly type: "PEACE_OFFERED"; readonly by: PowerId; readonly to: PowerId; readonly payment: number }
+  | {
+      readonly type: "PEACE_OFFERED";
+      readonly by: PowerId;
+      readonly to: PowerId;
+      readonly payment: number;
+      readonly cede: readonly AreaId[];
+      readonly demand: readonly AreaId[];
+    }
+  /** `power` joined the coalition against `target` (`founded`: it was the first). */
+  | { readonly type: "COALITION_JOINED"; readonly power: PowerId; readonly target: PowerId; readonly founded: boolean; readonly members: number }
+  /** `power` made a separate peace with the coalition's target and left it. */
+  | { readonly type: "COALITION_LEFT"; readonly power: PowerId; readonly target: PowerId; readonly reputationLoss: number }
+  | { readonly type: "COALITION_ENDED"; readonly target: PowerId; readonly reason: "recovered" | "eliminated" | "peace" }
   | { readonly type: "PEACE_DECLINED"; readonly by: PowerId; readonly offerer: PowerId }
   /** An attack found the target held by a power it is not at war with, and turned back. */
   | { readonly type: "ATTACK_CALLED_OFF"; readonly power: PowerId; readonly area: AreaId; readonly owner: PowerId }

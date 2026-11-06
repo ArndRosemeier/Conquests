@@ -1,6 +1,9 @@
 import type { Action } from "../../engine/state/actions.ts";
 import {
   callsTo,
+  coalitionAgainst,
+  coalitionBlocker,
+  tradeableAreas,
   declareWarCost,
   treatyBetween,
   offersTo,
@@ -16,7 +19,7 @@ import { opinionOf } from "../../engine/state/opinion.ts";
 import { reduce } from "../../engine/state/reducer.ts";
 import { Rng } from "../../engine/state/rng.ts";
 import type { RuleSet } from "../../engine/ruleset/types.ts";
-import type { PowerId } from "../../engine/types.ts";
+import type { AreaId, PowerId } from "../../engine/types.ts";
 import { getArea, neighborsOf } from "../../engine/world/classic.ts";
 import type { WorldDefinition } from "../../engine/world/types.ts";
 import type { DecisionContext, PlayerController } from "../types.ts";
@@ -74,7 +77,33 @@ export const DIPLOMAT = {
   askAidChance: 0.25,
   offerAidFriendAt: 20,
   offerAidChance: 0.1,
+  /** Land in peace terms: points per area are its victory value + income / landIncomePerPoint + landBase. */
+  landIncomePerPoint: 500_000,
+  landBase: 5,
+  /** Giving land up hurts more than gaining it pleases (home areas count double again). */
+  landLossAversion: 1.5,
+  /** Chance a winning AI demands land instead of money. */
+  demandLandChance: 0.5,
+  /** Coalitions: base chance per season to join, plus honor, plus per existing member; capped. */
+  coalitionChance: 0.06,
+  coalitionHonor: 0.2,
+  coalitionPerMember: 0.08,
+  coalitionMax: 0.45,
 } as const;
+
+/** What an area is worth in peace talks, in war-balance points. */
+export function landWorth(state: GameState, area: AreaId): number {
+  const a = state.areas[String(area)];
+  if (a === undefined) return 0;
+  return a.victoryValue + a.income / DIPLOMAT.landIncomePerPoint + DIPLOMAT.landBase;
+}
+
+/** Terms of a peace offer, as the AI builds them. */
+interface PeaceTerms {
+  readonly payment: number;
+  readonly cede: readonly AreaId[];
+  readonly demand: readonly AreaId[];
+}
 
 const unit = (v: number | undefined): number => Math.max(0, Math.min(1, (v ?? NEUTRAL_KNOB) / 100));
 
@@ -145,9 +174,10 @@ export class DiplomatAI implements PlayerController {
     }
     for (const a of this.proposals(sim, power, k, rng)) commit(a);
     for (const enemy of enemiesOf(sim, power)) {
-      const payment = this.peaceOffer(sim, power, enemy, k, rng);
-      if (payment !== null) commit({ type: "OFFER_PEACE", target: enemy, payment });
+      const terms = this.peaceOffer(sim, power, enemy, k, rng);
+      if (terms !== null) commit({ type: "OFFER_PEACE", target: enemy, ...terms });
     }
+    for (const target of this.coalitionTargets(sim, power, k, rng)) commit({ type: "JOIN_COALITION", target });
 
     const rolled = this.neighbours(sim, power).filter((t) => rng.next() < this.warChance(sim, power, t, k));
     if (rolled.length > 0) {
@@ -354,7 +384,46 @@ export class DiplomatAI implements PlayerController {
   /** Whether `me` accepts `offer`. Positive score = peace is worth more than fighting on. */
   private acceptsPeace(state: GameState, me: PowerId, offer: PeaceOffer, k: PersonaKnobs): boolean {
     if (offer.payment < 0 && getPowerState(state, me).treasury < -offer.payment) return false;
-    return this.peaceScore(state, me, offer.from, offer.payment, k) >= 0;
+    const land = this.landPoints(state, me, offer.cede ?? [], offer.demand ?? []);
+    return this.peaceScore(state, me, offer.from, offer.payment, k) + land - this.desertion(state, me, offer.from, k) >= 0;
+  }
+
+  /** Net worth to `me` of land it gains (`gets`) and gives up (`gives`), in war points. */
+  private landPoints(state: GameState, me: PowerId, gets: readonly AreaId[], gives: readonly AreaId[]): number {
+    const d = DIPLOMAT;
+    const gain = gets.reduce((n, a) => n + landWorth(state, a), 0);
+    const loss = gives.reduce((n, a) => n + landWorth(state, a) * d.landLossAversion * (state.areas[String(a)]?.homeOf === me ? 2 : 1), 0);
+    return gain - loss;
+  }
+
+  /** Reluctance to make a separate peace with a coalition's target while partners still fight. */
+  private desertion(state: GameState, me: PowerId, enemy: PowerId, k: PersonaKnobs): number {
+    const c = coalitionAgainst(state, enemy);
+    if (c === undefined || !c.members.includes(me)) return 0;
+    const partners = c.members.filter((m) => m !== me && isAtWar(state, m, enemy)).length;
+    return partners === 0 ? 0 : this.ruleSet.diplomacy.coalitionDesertCost * (0.5 + unit(k.honor));
+  }
+
+  /** Pariahs this power joins a coalition against this season. */
+  private coalitionTargets(state: GameState, me: PowerId, k: PersonaKnobs, rng: Rng): PowerId[] {
+    const d = DIPLOMAT;
+    const out: PowerId[] = [];
+    const near = new Set(this.neighbours(state, me).map(String));
+    for (const enemy of enemiesOf(state, me)) near.add(String(enemy));
+    for (const p of Object.values(state.powers)) {
+      const t = p.id;
+      if (coalitionBlocker(state, this.ruleSet, me, t) !== null) continue;
+      const members = coalitionAgainst(state, t)?.members.length ?? 0;
+      if (!near.has(String(t)) && members === 0) continue;
+      if (this.opinion(state, me, t) > 0) continue;
+      const atWar = isAtWar(state, me, t);
+      let chance = d.coalitionChance + d.coalitionHonor * unit(k.honor) + d.coalitionPerMember * members;
+      if (atWar) chance *= 2;
+      else chance *= d.perOpenWar ** enemiesOf(state, me).length;
+      if (!atWar && this.areaCount(state, t) > 1.5 * this.areaCount(state, me) && members === 0) chance *= 0.3;
+      if (rng.next() < Math.min(d.coalitionMax, chance)) out.push(t);
+    }
+    return out;
   }
 
   /** How much `me` wants peace with `enemy` if it receives `received` dollars (negative: it pays). */
@@ -373,25 +442,55 @@ export class DiplomatAI implements PlayerController {
     );
   }
 
-  /** A peace offer to make this season (payment the AI pays; negative = tribute it demands), or null. */
-  private peaceOffer(state: GameState, me: PowerId, enemy: PowerId, k: PersonaKnobs, rng: Rng): number | null {
+  /** A peace offer to make this season (money the AI pays, negative = tribute it demands, and land), or null. */
+  private peaceOffer(state: GameState, me: PowerId, enemy: PowerId, k: PersonaKnobs, rng: Rng): PeaceTerms | null {
     const d = DIPLOMAT;
     if ((state.peaceOffers ?? []).some((o) => o.from === me && o.to === enemy)) return null;
     const balance = warBalance(state, me, enemy);
     const len = warLength(state, me, enemy);
     const treasury = getPowerState(state, me).treasury;
     const round = (x: number): number => Math.max(0, Math.round(x / 100_000) * 100_000);
+    const deserting = this.desertion(state, me, enemy, k) > 0;
     if (balance <= d.sueBelow) {
+      if (deserting && balance > 2 * d.sueBelow) return null;
       // Sue for peace now and then, offering roughly what the winner needs to hear.
       if (rng.next() > (balance <= 2 * d.sueBelow ? 0.5 : 0.25)) return null;
-      return Math.min(round(treasury * 0.6), round(-balance * d.dollarsPerPoint));
+      const owed = -balance;
+      const cash = Math.min(round(treasury * 0.6), round(owed * d.dollarsPerPoint));
+      const short = owed - cash / d.dollarsPerPoint;
+      if (short > 10 && rng.next() < 0.5) {
+        // Not enough money: give up the cheapest border land instead.
+        const land = this.borderLand(state, me, enemy).sort((a, b) => landWorth(state, a) - landWorth(state, b))[0];
+        if (land !== undefined && landWorth(state, land) <= short * 1.5) {
+          const rest = Math.max(0, owed - landWorth(state, land));
+          return { payment: Math.min(cash, round(rest * d.dollarsPerPoint)), cede: [land], demand: [] };
+        }
+      }
+      return { payment: cash, cede: [], demand: [] };
     }
+    if (deserting) return null;
     if (len >= 8 && Math.abs(balance) < 10 && this.peaceScore(state, me, enemy, 0, k) >= 0) {
-      return rng.next() < 0.2 ? 0 : null;
+      return rng.next() < 0.2 ? { payment: 0, cede: [], demand: [] } : null;
     }
     if (balance >= 25 && len >= 4 && rng.next() < 0.15 * (1 - unit(k.honor) * 0.5)) {
-      return -Math.min(3_000_000, round(balance * 40_000));
+      if (rng.next() < d.demandLandChance) {
+        // Ask for the richest border land the war has earned.
+        const demand: AreaId[] = [];
+        let budget = balance * 0.8;
+        for (const a of this.borderLand(state, enemy, me).sort((x, y) => landWorth(state, y) - landWorth(state, x))) {
+          if (demand.length >= Math.min(2, this.ruleSet.diplomacy.maxCededAreas) || landWorth(state, a) > budget) continue;
+          demand.push(a);
+          budget -= landWorth(state, a);
+        }
+        if (demand.length > 0) return { payment: 0, cede: [], demand };
+      }
+      return { payment: -Math.min(3_000_000, round(balance * 40_000)), cede: [], demand: [] };
     }
     return null;
+  }
+
+  /** Areas `giver` could hand over that border land held by `taker`. */
+  private borderLand(state: GameState, giver: PowerId, taker: PowerId): AreaId[] {
+    return tradeableAreas(state, giver).filter((a) => neighborsOf(this.world, a).some((n) => state.areas[String(n)]?.owner === taker));
   }
 }

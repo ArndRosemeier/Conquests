@@ -364,6 +364,7 @@ function DiplomacyPage({ rs }: { rs: RuleSet }): React.JSX.Element {
         <li>Powers start at peace. Land of a power you are at peace with cannot be attacked.</li>
         <li><b>Declaring war</b> is an order of its own, allowed in any season. It costs {d.declareWarCost} reputation, or only {d.declareWarOnPariahCost} if the victim's reputation is below {d.pariahBelow}.</li>
         <li><b>Offering peace</b>: you name a payment you make when they accept, nothing, or a sum you demand from them. They answer on their turn. An offer lapses when your next turn begins.</li>
+        <li><b>Land in peace terms</b>: an offer may also hand over up to {d.maxCededAreas} territories each way. Home supply centers can never be traded. The old owner's troops and fleets withdraw to a neighbouring territory it still holds (or are disbanded), and the new owner moves in with {rs.limits.minGarrison.toLocaleString("en-US")} troops. Land taken this way scores its victory points like a conquest.</li>
         <li>Every peace starts a <b>truce of {d.truceSeasons / 4} years</b>, during which neither side can declare war.</li>
       </ul>
 
@@ -374,6 +375,13 @@ function DiplomacyPage({ rs }: { rs: RuleSet }): React.JSX.Element {
         <li><b>Alliance</b>, no end date. When an ally is attacked, you get a <b>call to arms</b> and must answer before ending your turn: join the war for +{d.answerCallGain} reputation, or refuse for −{d.refuseCallCost} and the alliance ends. Leaving an alliance costs {d.leaveAllianceCost}; attacking an ally costs {d.allyBetrayalCost} on top of the declaration.</li>
         <li><b>War aid</b>: ask a power to join your war, or offer to join someone else's, for a price. Joining for a treaty partner costs no reputation; joining anyone else's war costs a normal declaration. Allies and helpers may join even during a truce with the enemy.</li>
         <li>Joining a war also calls the enemy's allies to arms, so wars can spread.</li>
+      </ul>
+
+      <h3>Coalitions</h3>
+      <ul>
+        <li>When a power's reputation falls below {d.pariahBelow}, anyone may found a <b>coalition</b> against it from the Diplomacy panel, and others may join. Joining declares war if needed (the cheap pariah declaration) and gives +{d.coalitionJoinGain} reputation.</li>
+        <li>A member that makes a separate peace while others still fight loses {d.coalitionDesertCost} reputation.</li>
+        <li>The coalition ends when its target's reputation is back to {d.coalitionEndsAt}, when the target is out, or when no member is still at war with it.</li>
       </ul>
 
       <h3>Opinion</h3>
@@ -414,10 +422,20 @@ function DiplomacyPage({ rs }: { rs: RuleSet }): React.JSX.Element {
         payment ÷ {money(g.dollarsPerPoint)} + {num(g.wearinessPerSeason)} × seasons at war + {g.otherWarPressure} × other wars − balance × (0.5 + aggression) − 6 + (honor − 0.5) × 10
       </Formula>
       <p>It offers peace itself when its balance falls to {g.sueBelow} or below, and may demand tribute when well ahead.</p>
+      <p>Land in a peace offer counts in balance points:</p>
+      <Formula>
+        territory worth = victory points + income ÷ {money(g.landIncomePerPoint)} + {g.landBase}
+      </Formula>
+      <p>
+        Land it would receive adds its worth; land it would give up subtracts {num(g.landLossAversion)} × its worth (double again for a home province).
+        A losing power short of money may offer its cheapest border territory; a winning power demands border land worth up to 0.8 × its balance ({pct(g.demandLandChance)} of the time instead of tribute).
+        In a coalition it also subtracts {d.coalitionDesertCost} × (0.5 + honor) from a separate peace while partners still fight.
+      </p>
       <ul>
         <li>The war chance is also multiplied by (1 − opinion ÷ 120), between 0.25 and 2; by {num(g.pactWarFactor)} × (1 − honor) against a pact partner and {num(g.allyWarFactor)} × (1 − honor) against an ally.</li>
         <li><b>Treaties</b>: it accepts a pact when opinion + payment ÷ {money(g.dollarsPerPoint)} (+15 if at war elsewhere, +10 if you are bigger, + honor, − aggression) reaches {g.pactAt}; an alliance needs opinion {g.allianceAt} or more and a common enemy (or opinion {g.allianceAt + 25}).</li>
         <li><b>Calls to arms</b>: it joins when honor × 60 + opinion of the ally ÷ 2 + 10 (+20 if refusing would ruin its reputation, −25 if the enemy is far bigger, −15 per war it already fights) reaches {g.joinCallAt}.</li>
+        <li><b>Coalitions</b>: each season it may join a coalition against a pariah it borders or already fights, if its opinion of the pariah is not positive: chance {num(g.coalitionChance)} + {num(g.coalitionHonor)} × honor + {num(g.coalitionPerMember)} per member (×2 if already at war, ×{num(g.perOpenWar)} per other war), at most {pct(g.coalitionMax)}.</li>
         <li><b>War aid price</b>: {money(g.aidBasePrice)} × (1 − 0.6 × its opinion of you) × (1 + 0.5 × its opinion of the enemy) × (1 − 0.4 × honor), halved for a treaty partner (opinions as −1 to 1). The panel shows the price before you ask.</li>
       </ul>
     </>

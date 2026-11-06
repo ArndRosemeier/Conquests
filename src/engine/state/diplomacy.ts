@@ -1,10 +1,13 @@
 import type { RuleSet } from "../ruleset/types.ts";
 import { IllegalActionError } from "../types.ts";
-import type { PowerId } from "../types.ts";
+import type { AreaId, PowerId } from "../types.ts";
+import { getArea, neighborsOf } from "../world/classic.ts";
+import type { WorldDefinition } from "../world/types.ts";
 import type { GameEvent } from "./events.ts";
-import type { CallToArms, GameState, PeaceOffer, Proposal, Treaty } from "./gameState.ts";
-import { declareWar, endWar, getPowerState, isAtWar, withPower } from "./helpers.ts";
+import type { CallToArms, Coalition, GameState, PeaceOffer, Proposal, Treaty } from "./gameState.ts";
+import { declareWar, endWar, getAreaState, getPowerState, isAtWar, withArea, withPower } from "./helpers.ts";
 import { nowSeason } from "./knowledge.ts";
+import { changeControl } from "./scoring.ts";
 
 /**
  * War, peace and reputation. War is never a side effect of marching: a power
@@ -322,9 +325,31 @@ export function tickDiplomacy(state: GameState, ruleSet: RuleSet): { state: Game
       proposals: (next.proposals ?? []).filter((p) => p.expires >= now && !gone(p.from) && !gone(p.to)),
       callsToArms: (next.callsToArms ?? []).filter((c) => c.expires >= now && !gone(c.ally) && !gone(c.partner) && !gone(c.enemy)),
       peaceOffers: (next.peaceOffers ?? []).filter((o) => !gone(o.from) && !gone(o.to)),
+      coalitions: tickCoalitions(next, ruleSet, gone, events),
     },
     events,
   };
+}
+
+function tickCoalitions(state: GameState, ruleSet: RuleSet, gone: (p: PowerId) => boolean, events: GameEvent[]): Coalition[] {
+  const out: Coalition[] = [];
+  for (const c of state.coalitions ?? []) {
+    if (gone(c.target)) {
+      events.push({ type: "COALITION_ENDED", target: c.target, reason: "eliminated" });
+      continue;
+    }
+    if (reputationOf(state, ruleSet, c.target) >= ruleSet.diplomacy.coalitionEndsAt) {
+      events.push({ type: "COALITION_ENDED", target: c.target, reason: "recovered" });
+      continue;
+    }
+    const members = c.members.filter((m) => !gone(m) && isAtWar(state, m, c.target));
+    if (members.length === 0) {
+      events.push({ type: "COALITION_ENDED", target: c.target, reason: "peace" });
+      continue;
+    }
+    out.push({ ...c, members });
+  }
+  return out;
 }
 
 function adjustReputation(state: GameState, ruleSet: RuleSet, power: PowerId, delta: number): GameState {
@@ -365,11 +390,41 @@ export function declareWarAction(
   return { state: { ...next, tick: next.tick + 1 }, events };
 }
 
+/** Whether `giver` may hand `area` over in a peace treaty: it must hold it, and home supply centers are never traded. */
+export function cedeBlocker(state: GameState, giver: PowerId, area: AreaId): string | null {
+  const a = state.areas[String(area)];
+  if (a === undefined) return `Unknown area ${String(area)}`;
+  if (a.owner !== giver) return `${String(giver)} does not hold area ${String(area)}`;
+  if (a.supplyCenterOf === giver) return "Home supply centers cannot be handed over";
+  return null;
+}
+
+/** Areas `giver` could hand over in a peace treaty. */
+export function tradeableAreas(state: GameState, giver: PowerId): AreaId[] {
+  return Object.values(state.areas)
+    .filter((a) => cedeBlocker(state, giver, a.id) === null)
+    .map((a) => a.id);
+}
+
+function checkAreas(state: GameState, ruleSet: RuleSet, giver: PowerId, areas: readonly AreaId[]): void {
+  if (areas.length > ruleSet.diplomacy.maxCededAreas) {
+    throw new IllegalActionError(`At most ${ruleSet.diplomacy.maxCededAreas} areas can change hands each way`);
+  }
+  if (new Set(areas.map(String)).size !== areas.length) throw new IllegalActionError("An area is listed twice");
+  for (const area of areas) {
+    const blocker = cedeBlocker(state, giver, area);
+    if (blocker !== null) throw new IllegalActionError(blocker);
+  }
+}
+
 export function offerPeaceAction(
   state: GameState,
+  ruleSet: RuleSet,
   by: PowerId,
   target: PowerId,
   payment: number,
+  cede: readonly AreaId[] = [],
+  demand: readonly AreaId[] = [],
 ): { state: GameState; events: GameEvent[] } {
   if (!isAtWar(state, by, target)) throw new IllegalActionError(`Not at war with ${String(target)}`);
   if (!Number.isFinite(payment) || Math.round(payment) !== payment) {
@@ -378,14 +433,50 @@ export function offerPeaceAction(
   if (payment > getPowerState(state, by).treasury) {
     throw new IllegalActionError("You cannot offer more than you have in the treasury");
   }
+  checkAreas(state, ruleSet, by, cede);
+  checkAreas(state, ruleSet, target, demand);
   const offers = (state.peaceOffers ?? []).filter((o) => !(o.from === by && o.to === target));
-  const next = { ...state, peaceOffers: [...offers, { from: by, to: target, payment }], tick: state.tick + 1 };
-  return { state: next, events: [{ type: "PEACE_OFFERED", by, to: target, payment }] };
+  const offer: PeaceOffer = { from: by, to: target, payment, cede: [...cede], demand: [...demand] };
+  const next = { ...state, peaceOffers: [...offers, offer], tick: state.tick + 1 };
+  return { state: next, events: [{ type: "PEACE_OFFERED", by, to: target, payment, cede: offer.cede!, demand: offer.demand! }] };
+}
+
+/**
+ * Hand `area` from `giver` to `taker` under a treaty. The giver's troops and
+ * fleets withdraw to a neighbouring area it still holds (or are disbanded);
+ * the taker moves in with the minimum garrison.
+ */
+function cedeArea(
+  state: GameState,
+  ruleSet: RuleSet,
+  world: WorldDefinition,
+  area: AreaId,
+  giver: PowerId,
+  taker: PowerId,
+  events: GameEvent[],
+): GameState {
+  const a = getAreaState(state, area);
+  let next = state;
+  const homes = neighborsOf(world, area)
+    .map((id) => getAreaState(next, id))
+    .filter((x) => x.owner === giver);
+  const troopHome = homes[0];
+  if (troopHome !== undefined && a.troops > 0) next = withArea(next, { ...troopHome, troops: troopHome.troops + a.troops });
+  const port = homes.find((x) => getArea(world, x.id).isPort);
+  if (port !== undefined && a.fleets > 0) {
+    const p = getAreaState(next, port.id);
+    next = withArea(next, { ...p, fleets: p.fleets + a.fleets });
+  }
+  next = withArea(next, { ...getAreaState(next, area), troops: ruleSet.limits.minGarrison, fleets: 0 });
+  const changed = changeControl(next, area, taker, true);
+  events.push(...changed.events);
+  return changed.state;
 }
 
 export function answerPeaceAction(
   state: GameState,
   ruleSet: RuleSet,
+  world: WorldDefinition,
   me: PowerId,
   from: PowerId,
   accept: boolean,
@@ -399,21 +490,81 @@ export function answerPeaceAction(
       events: [{ type: "PEACE_DECLINED", by: me, offerer: from }],
     };
   }
-  let next: GameState = state;
-  if (offer.payment !== 0) {
-    const payer = offer.payment > 0 ? from : me;
-    const payee = offer.payment > 0 ? me : from;
-    const amount = Math.abs(offer.payment);
-    const p = getPowerState(next, payer);
-    if (p.treasury < amount) {
-      throw new IllegalActionError(`${String(payer)} can no longer pay ${amount}`);
-    }
-    next = withPower(next, { ...p, treasury: p.treasury - amount });
-    const q = getPowerState(next, payee);
-    next = withPower(next, { ...q, treasury: q.treasury + amount });
-  }
+  const cede = offer.cede ?? [];
+  const demand = offer.demand ?? [];
+  checkAreas(state, ruleSet, from, cede);
+  checkAreas(state, ruleSet, me, demand);
+  let next = transfer(state, from, me, offer.payment);
+  const events: GameEvent[] = [{ type: "WAR_ENDED", by: from, against: me, payment: offer.payment, ceded: [...cede], gained: [...demand] }];
+  for (const area of cede) next = cedeArea(next, ruleSet, world, area, from, me, events);
+  for (const area of demand) next = cedeArea(next, ruleSet, world, area, me, from, events);
   next = makePeace(next, ruleSet, from, me);
-  return { state: next, events: [{ type: "WAR_ENDED", by: from, against: me, payment: offer.payment }] };
+  next = leaveCoalitionsOnPeace(next, ruleSet, from, me, events);
+  return { state: next, events };
+}
+
+// --- Coalitions -------------------------------------------------------------
+
+export function coalitionAgainst(state: GameState, target: PowerId): Coalition | undefined {
+  return (state.coalitions ?? []).find((c) => c.target === target);
+}
+
+/** Why `me` cannot join the coalition against `target`, or null. */
+export function coalitionBlocker(state: GameState, ruleSet: RuleSet, me: PowerId, target: PowerId): string | null {
+  if (me === target) return "Not against yourself";
+  const t = getPowerState(state, target);
+  if (t.eliminated || t.control === "neutral") return `${String(target)} is not in the game`;
+  const c = coalitionAgainst(state, target);
+  if (c?.members.includes(me)) return "You are already a member";
+  if (c === undefined && reputationOf(state, ruleSet, target) >= ruleSet.diplomacy.pariahBelow) {
+    return `A coalition needs ${String(target)}'s reputation below ${ruleSet.diplomacy.pariahBelow}`;
+  }
+  if (treatyBetween(state, me, target)?.kind === "alliance") return `You are allied with ${String(target)}`;
+  if (!isAtWar(state, me, target)) return warBlocker(state, me, target);
+  return null;
+}
+
+export function joinCoalitionAction(
+  state: GameState,
+  ruleSet: RuleSet,
+  me: PowerId,
+  target: PowerId,
+): { state: GameState; events: GameEvent[] } {
+  const blocker = coalitionBlocker(state, ruleSet, me, target);
+  if (blocker !== null) throw new IllegalActionError(blocker);
+  const events: GameEvent[] = [];
+  let next = state;
+  if (!isAtWar(next, me, target)) next = joinWar(next, ruleSet, me, target, declareWarCost(next, ruleSet, me, target), "declared", events);
+  next = adjustReputation(next, ruleSet, me, ruleSet.diplomacy.coalitionJoinGain);
+  const old = coalitionAgainst(next, target);
+  const coalition: Coalition = old === undefined
+    ? { target, members: [me], since: nowSeason(next) }
+    : { ...old, members: [...old.members, me] };
+  next = { ...next, coalitions: [...(next.coalitions ?? []).filter((c) => c !== old), coalition], tick: next.tick + 1 };
+  events.unshift({ type: "COALITION_JOINED", power: me, target, founded: old === undefined, members: coalition.members.length });
+  return { state: next, events };
+}
+
+/** After peace between a and b: a member that made peace with its coalition's target leaves it. */
+function leaveCoalitionsOnPeace(state: GameState, ruleSet: RuleSet, a: PowerId, b: PowerId, events: GameEvent[]): GameState {
+  let next = state;
+  for (const [member, target] of [[a, b], [b, a]] as const) {
+    const c = coalitionAgainst(next, target);
+    if (c === undefined || !c.members.includes(member)) continue;
+    const others = c.members.filter((m) => m !== member);
+    const stillFighting = others.some((m) => isAtWar(next, m, target));
+    const cost = stillFighting ? ruleSet.diplomacy.coalitionDesertCost : 0;
+    if (cost > 0) next = adjustReputation(next, ruleSet, member, -cost);
+    events.push({ type: "COALITION_LEFT", power: member, target, reputationLoss: cost });
+    const rest = (next.coalitions ?? []).filter((x) => x !== c);
+    if (stillFighting) {
+      next = { ...next, coalitions: [...rest, { ...c, members: others }] };
+    } else {
+      next = { ...next, coalitions: rest };
+      events.push({ type: "COALITION_ENDED", target, reason: "peace" });
+    }
+  }
+  return next;
 }
 
 /** End a war: clear its bookkeeping and start the truce. */

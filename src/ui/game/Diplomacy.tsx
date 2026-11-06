@@ -1,9 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type React from "react";
 import { aidPriceFor } from "../../controllers/ai/diplomat.ts";
 import {
   callsTo,
+  coalitionAgainst,
+  coalitionBlocker,
   declareWarCost,
+  tradeableAreas,
   offersTo,
   proposalBlocker,
   reputationOf,
@@ -12,11 +15,14 @@ import {
   warBalance,
   warBlocker,
 } from "../../engine/state/diplomacy.ts";
-import type { GameState, Proposal } from "../../engine/state/gameState.ts";
+import type { GameState, PeaceOffer, Proposal } from "../../engine/state/gameState.ts";
 import { enemiesOf, getPowerState, isAtWar } from "../../engine/state/helpers.ts";
 import { nowSeason } from "../../engine/state/knowledge.ts";
 import { opinionOf } from "../../engine/state/opinion.ts";
-import type { PowerId } from "../../engine/types.ts";
+import type { AreaId, PowerId } from "../../engine/types.ts";
+import { getArea, neighborsOf } from "../../engine/world/classic.ts";
+import type { WorldDefinition } from "../../engine/world/types.ts";
+import { leaderLine, leaderOf } from "../content/leaders.ts";
 import { lookOf, money, powerName } from "../content/powers.ts";
 import { useGame } from "../store.ts";
 
@@ -34,8 +40,86 @@ export function termsLabel(payment: number, mine: boolean): string {
   return mine ? `you ask ${money(-payment)}` : `they ask ${money(-payment)}`;
 }
 
-const PEACE_PAYMENTS = [500_000, 1_000_000, 2_000_000, 4_000_000];
 const AID_PAYMENTS = [0, 1_000_000, 2_000_000, 4_000_000];
+
+const areaNames = (world: WorldDefinition, ids: readonly AreaId[]): string => ids.map((id) => getArea(world, id).name).join(", ");
+
+/** Full terms of a peace offer (money and land), from the point of view of `me`. */
+export function peaceTermsLabel(offer: PeaceOffer, me: PowerId, world: WorldDefinition): string {
+  const mine = offer.from === me;
+  const parts = [termsLabel(offer.payment, mine)];
+  const cede = offer.cede ?? [];
+  const demand = offer.demand ?? [];
+  if (cede.length > 0) parts.push(mine ? `you hand over ${areaNames(world, cede)}` : `they hand over ${areaNames(world, cede)}`);
+  if (demand.length > 0) parts.push(mine ? `you ask for ${areaNames(world, demand)}` : `you hand over ${areaNames(world, demand)}`);
+  if (parts.length > 1 && offer.payment === 0) parts.shift();
+  return parts.join(" · ");
+}
+
+const PEACE_MONEY = [-3_000_000, -1_000_000, 0, 500_000, 1_000_000, 2_000_000, 4_000_000];
+
+/**
+ * Compose a peace offer: money either way, and up to the treaty limit of areas
+ * each way. Only land bordering the other side is listed (plus `focus`).
+ */
+export function PeaceComposer({ target, focus }: { target: PowerId; focus?: AreaId }): React.JSX.Element | null {
+  const gs = useGame((s) => s.gameState);
+  const me = useGame((s) => s.humanPower);
+  const ruleSet = useGame((s) => s.ruleSet);
+  const world = useGame((s) => s.world);
+  const play = useGame((s) => s.play);
+  const [payment, setPayment] = useState(0);
+  const [demand, setDemand] = useState<readonly AreaId[]>([]);
+  const [cede, setCede] = useState<readonly AreaId[]>([]);
+  if (gs === null || me === null) return null;
+  const max = ruleSet.diplomacy.maxCededAreas;
+  const treasury = getPowerState(gs, me).treasury;
+  const borders = (giver: PowerId, taker: PowerId): AreaId[] =>
+    tradeableAreas(gs, giver)
+      .filter((a) => a === focus || neighborsOf(world, a).some((n) => gs.areas[String(n)]?.owner === taker))
+      .sort((a, b) => getArea(world, a).name.localeCompare(getArea(world, b).name));
+  const askable = borders(target, me);
+  const givable = borders(me, target);
+  const toggle = (list: readonly AreaId[], set: (v: readonly AreaId[]) => void, id: AreaId): void =>
+    set(list.includes(id) ? list.filter((x) => x !== id) : list.length < max ? [...list, id] : list);
+  const money$ = PEACE_MONEY.filter((a) => a <= treasury);
+  const label = (a: number): string => (a === 0 ? "No money" : a > 0 ? `Pay ${money(a)}` : `Demand ${money(-a)}`);
+  return (
+    <div className="peace-composer">
+      <div className="chips">
+        {money$.map((a) => (
+          <button key={a} className={`chip${payment === a ? " on" : ""}`} onClick={() => setPayment(a)}>{label(a)}</button>
+        ))}
+      </div>
+      {askable.length > 0 && (
+        <>
+          <small className="hint">Ask for land (up to {max}):</small>
+          <div className="chips">
+            {askable.map((a) => (
+              <button key={String(a)} className={`chip${demand.includes(a) ? " on" : ""}`} onClick={() => toggle(demand, setDemand, a)}>{getArea(world, a).name}</button>
+            ))}
+          </div>
+        </>
+      )}
+      {givable.length > 0 && (
+        <>
+          <small className="hint">Hand over land:</small>
+          <div className="chips">
+            {givable.map((a) => (
+              <button key={String(a)} className={`chip${cede.includes(a) ? " on" : ""}`} onClick={() => toggle(cede, setCede, a)}>{getArea(world, a).name}</button>
+            ))}
+          </div>
+        </>
+      )}
+      <button
+        className="btn small primary"
+        onClick={() => play({ type: "OFFER_PEACE", target, payment, cede, demand })}
+      >
+        Send peace offer
+      </button>
+    </div>
+  );
+}
 
 function statusOf(gs: GameState, me: PowerId, other: PowerId): { label: string; tone: string } {
   if (isAtWar(gs, me, other)) return { label: "At war", tone: "war" };
@@ -88,6 +172,7 @@ export function DiplomacyPanel(): React.JSX.Element | null {
           Your reputation: <b>{reputationOf(gs, ruleSet, me)}</b> of {ruleSet.diplomacy.reputationMax}.
           {!yourTurn && " You can make proposals on your turn."}
         </p>
+        <Coalitions />
         <div className="dip-list">
           {others.map((id) => {
             const st = statusOf(gs, me, id);
@@ -96,20 +181,36 @@ export function DiplomacyPanel(): React.JSX.Element | null {
             const treaty = treatyBetween(gs, me, id);
             const atWar = isAtWar(gs, me, id);
             const sent = mySent(id);
-            const peaceSent = (gs.peaceOffers ?? []).some((o) => o.from === me && o.to === id);
+            const myOffer = (gs.peaceOffers ?? []).find((o) => o.from === me && o.to === id);
+            const peaceSent = myOffer !== undefined;
             const can = (kind: Proposal["kind"], enemy: PowerId | null = null, years = 0): boolean =>
               yourTurn && proposalBlocker(gs, ruleSet, me, id, kind, enemy, years) === null;
             const aidTargets = myEnemies.filter((e) => e !== id && can("aid", e));
+            const leader = leaderOf(id, gs.startYear);
+            const line = opinion && leader
+              ? leaderLine({
+                  atWar,
+                  balance: warBalance(gs, id, me),
+                  treaty: treaty?.kind ?? null,
+                  inCoalitionAgainstYou: coalitionAgainst(gs, me)?.members.includes(id) ?? false,
+                  opinion: opinion.value,
+                })
+              : null;
             return (
               <section key={String(id)} className={`dip-row tone-${st.tone}`}>
                 <header>
-                  <img src={lookOf(String(id)).crest} alt="" />
+                  <div className="dip-portrait">
+                    <img src={leader?.portrait ?? lookOf(String(id)).crest} alt={leader?.name ?? ""} />
+                    {leader && <img className="dip-crest" src={lookOf(String(id)).crest} alt="" />}
+                  </div>
                   <div>
                     <b>{names(id)}</b>
+                    {leader && <small>{leader.name}, {leader.title}</small>}
                     <small>{ps.control === "human" ? "player" : "computer"} · reputation {reputationOf(gs, ruleSet, id)}</small>
                   </div>
                   <span className={`dip-status ${st.tone}`}>{st.label}</span>
                 </header>
+                {line && <blockquote className="dip-line">“{line}”</blockquote>}
                 {opinion && (
                   <div className="dip-opinion">
                     <span>Thinks of you: <b className={opinion.value >= 0 ? "good" : "bad"}>{opinion.value > 0 ? "+" : ""}{opinion.value}</b></span>
@@ -122,15 +223,7 @@ export function DiplomacyPanel(): React.JSX.Element | null {
                 ))}
                 {yourTurn && (
                   <div className="chips">
-                    {atWar && !peaceSent && (
-                      <>
-                        <button className="chip" onClick={() => play({ type: "OFFER_PEACE", target: id, payment: 0 })}>Offer peace</button>
-                        {PEACE_PAYMENTS.filter((a) => a <= treasury).map((a) => (
-                          <button key={a} className="chip" onClick={() => play({ type: "OFFER_PEACE", target: id, payment: a })}>Peace, pay {money(a)}</button>
-                        ))}
-                      </>
-                    )}
-                    {atWar && peaceSent && <span className="hint">Peace offer sent.</span>}
+                    {atWar && myOffer && <span className="hint">Peace offer sent ({peaceTermsLabel(myOffer, me, world)}).</span>}
                     {!atWar && ruleSet.diplomacy.pactYears.map((y) =>
                       can("pact", null, y) && !sent.some((p) => p.kind === "pact") ? (
                         <button key={y} className="chip" onClick={() => play({ type: "PROPOSE", to: id, kind: "pact", payment: 0, years: y, enemy: null })}>
@@ -151,6 +244,7 @@ export function DiplomacyPanel(): React.JSX.Element | null {
                     )}
                   </div>
                 )}
+                {yourTurn && atWar && !peaceSent && <PeaceComposer target={id} />}
                 {yourTurn && aidTargets.map((enemy) => {
                   const price = ps.control === "ai" && ps.persona ? aidPriceFor(gs, ruleSet, world, id, me, enemy, ps.persona) : null;
                   if (sent.some((p) => p.kind === "aid")) return null;
@@ -178,13 +272,64 @@ export function DiplomacyPanel(): React.JSX.Element | null {
   );
 }
 
+/** Coalitions in force, and pariahs a coalition could be founded against. */
+function Coalitions(): React.JSX.Element | null {
+  const gs = useGame((s) => s.gameState);
+  const me = useGame((s) => s.humanPower);
+  const ruleSet = useGame((s) => s.ruleSet);
+  const play = useGame((s) => s.play);
+  if (gs === null || me === null) return null;
+  const d = ruleSet.diplomacy;
+  const names = (id: PowerId | null): string => powerName(ruleSet.powers, id);
+  const yourTurn = gs.stage === "PLAYER" && gs.activePower === me && gs.winner === null;
+  const pariahs = ruleSet.playOrder.filter((id) => {
+    const p = getPowerState(gs, id);
+    return !p.eliminated && p.control !== "neutral" && (coalitionAgainst(gs, id) !== undefined || reputationOf(gs, ruleSet, id) < d.pariahBelow);
+  });
+  if (pariahs.length === 0) return null;
+  return (
+    <div className="dip-coalitions">
+      {pariahs.map((t) => {
+        const c = coalitionAgainst(gs, t);
+        const blocker = coalitionBlocker(gs, ruleSet, me, t);
+        const cost = isAtWar(gs, me, t) ? 0 : declareWarCost(gs, ruleSet, me, t);
+        return (
+          <div key={String(t)} className="dip-coalition">
+            <span>
+              {t === me ? (
+                <b>{c ? `A coalition has formed against you: ${c.members.map(names).join(", ")}.` : "Your reputation is so low that others may band together against you."}</b>
+              ) : (
+                <>
+                  <b>{c ? `Coalition against ${names(t)}` : `${names(t)} is a pariah`}</b>
+                  {c ? `: ${c.members.map(names).join(", ")}.` : ` (reputation ${reputationOf(gs, ruleSet, t)}). Anyone may found a coalition against it.`}
+                </>
+              )}
+              <small className="hint"> A coalition lasts until its target's reputation is back to {d.coalitionEndsAt}. Leaving it by a separate peace costs {d.coalitionDesertCost} reputation.</small>
+            </span>
+            {t !== me && yourTurn && blocker === null && (
+              <button className="chip danger" onClick={() => play({ type: "JOIN_COALITION", target: t })}>
+                {c ? "Join" : "Found"} the coalition (reputation {d.coalitionJoinGain - cost >= 0 ? "+" : "−"}{Math.abs(d.coalitionJoinGain - cost)}{isAtWar(gs, me, t) ? "" : ", war"})
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Everything waiting for the player's answer: peace offers, proposals and calls to arms. */
 export function Inbox(): React.JSX.Element | null {
   const gs = useGame((s) => s.gameState);
   const me = useGame((s) => s.humanPower);
   const ruleSet = useGame((s) => s.ruleSet);
+  const world = useGame((s) => s.world);
   const play = useGame((s) => s.play);
   if (gs === null || me === null || gs.stage !== "PLAYER" || gs.activePower !== me || gs.winner !== null) return null;
+  const face = (id: PowerId): React.JSX.Element => {
+    const l = leaderOf(id, gs.startYear);
+    return <img className="inbox-face" src={l?.portrait ?? lookOf(String(id)).crest} alt={l?.name ?? ""} title={l?.name} />;
+  };
   const names = (id: PowerId | null): string => powerName(ruleSet.powers, id);
   const calls = callsTo(gs, me);
   const peace = offersTo(gs, me);
@@ -215,10 +360,10 @@ export function Inbox(): React.JSX.Element | null {
       {peace.map((o) => (
         <div key={`p${String(o.from)}`} className="buy peace-answer">
           <div className="buy-head">
-            <span className="action-icon">🕊</span>
+            {face(o.from)}
             <span className="action-text">
               <b>{names(o.from)} offers peace</b>
-              <small>Terms: {termsLabel(o.payment, false)}. Then {d.truceSeasons / 4} years of truce.</small>
+              <small>Terms: {peaceTermsLabel(o, me, world)}. Then {d.truceSeasons / 4} years of truce.</small>
             </span>
           </div>
           <div className="chips">
@@ -232,7 +377,7 @@ export function Inbox(): React.JSX.Element | null {
         return (
           <div key={`${p.kind}${String(p.from)}`} className="buy peace-answer">
             <div className="buy-head">
-              <span className="action-icon">{p.kind === "aid" ? "⚔" : "📜"}</span>
+              {face(p.from)}
               <span className="action-text">
                 <b>
                   {p.kind === "aid"
