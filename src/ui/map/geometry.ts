@@ -72,7 +72,9 @@ export function worldGeometry(world: WorldDefinition): Map<AreaId, AreaGeometry>
     out.set(area.id, {
       id: area.id,
       path,
-      center: best ? { x: best.x, y: best.y } : area.labelAnchor,
+      // The world builder places the anchor inside the territory; a ring
+      // centroid can fall outside a curved one (Chile, Norway).
+      center: area.labelAnchor ?? (best ? { x: best.x, y: best.y } : { x: 0, y: 0 }),
       minX,
       minY,
       maxX,
@@ -82,6 +84,24 @@ export function worldGeometry(world: WorldDefinition): Map<AreaId, AreaGeometry>
   }
   cache.set(world, out);
   return out;
+}
+
+const decorCache = new WeakMap<WorldDefinition, Path2D | null>();
+
+/** Neutral scenery land (Greenland, New Zealand...) as one path, or null if the world has none. */
+export function decorPath(world: WorldDefinition): Path2D | null {
+  if (decorCache.has(world)) return decorCache.get(world)!;
+  let path: Path2D | null = null;
+  if (world.decor && world.decor.length > 0) {
+    path = new Path2D();
+    for (const ring of world.decor) {
+      if (ring.length < 3) continue;
+      ring.forEach((p, i) => (i === 0 ? path!.moveTo(p.x, p.y) : path!.lineTo(p.x, p.y)));
+      path.closePath();
+    }
+  }
+  decorCache.set(world, path);
+  return path;
 }
 
 /** A quadratic arc between two points, bowed to the left of travel. */

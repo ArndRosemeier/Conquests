@@ -6,8 +6,8 @@ import earthJson from "./data/earth.generated.json?raw";
 /**
  * The real Earth as a ready-to-use WorldDefinition.
  *
- * The geometry is expensive to derive (clipping 130+ Voronoi cells against a
- * detailed coastline takes ~20s), so it is precomputed offline by
+ * The geometry is derived from detailed country borders, too slow and too bulky
+ * to do in the browser, so it is precomputed offline by
  * `scripts/generateEarth.ts` and shipped as a static JSON asset. This module
  * just parses and rehydrates it, giving instant startup and keeping the bulky
  * coastline data out of the client bundle. Re-run `npm run gen:world` after

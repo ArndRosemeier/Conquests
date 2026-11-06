@@ -352,7 +352,7 @@ function buildAdjacency(
 }
 
 /** Index of the nearest land atom to a point (Euclidean), or -1 if none. */
-function nearestLandAtom(
+export function nearestLandAtom(
   p: Point,
   atoms: readonly Point[],
   isLand: readonly boolean[],
@@ -373,7 +373,7 @@ function nearestLandAtom(
 }
 
 /** Minimal binary min-heap keyed by number, for Dijkstra. */
-class MinHeap {
+export class MinHeap {
   private readonly keys: number[] = [];
   private readonly vals: number[] = [];
 

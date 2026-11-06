@@ -62,6 +62,11 @@ export interface WorldDefinition {
    * Omit for flat maps that do not wrap.
    */
   readonly wrapX?: number;
+  /**
+   * Land that belongs to no territory (Greenland, New Zealand, far islands),
+   * drawn as neutral scenery. Optional; outer rings in world units.
+   */
+  readonly decor?: readonly (readonly Point[])[];
 }
 
 /** Home areas and supply centers per major power, used by scenarios. */
