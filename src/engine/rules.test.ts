@@ -168,3 +168,24 @@ describe("rules", () => {
     expect(loaded.winningScore).toBe(0);
   });
 });
+
+describe("home advantage", () => {
+  it("doubles the defender's battle strength in the odds calculator", async () => {
+    const { scenarioArmyEff } = await import("./state/combatSim.ts");
+    const scenario = {
+      attacker: FRANCE,
+      attackerTroops: 10_000,
+      attackerFleets: 0,
+      bySea: false,
+      defender: GERMANY,
+      minorDefenseFactor: 3,
+      defenderTroops: 10_000,
+      defenderFleets: 0,
+      terrain: 0,
+      fortified: false,
+    };
+    const flat = { ...R, combat: { ...R.combat, homeAdvantageMultiplier: 1 } };
+    expect(R.combat.homeAdvantageMultiplier).toBe(2);
+    expect(scenarioArmyEff(R, scenario).defense).toBeCloseTo(scenarioArmyEff(flat, scenario).defense * 2);
+  });
+});

@@ -275,6 +275,7 @@ export class AIControllerV2 implements PlayerController {
     const terrain = getArea(this.world, target.id).terrain;
     return (
       effectiveness(this.ruleSet, base) *
+      this.ruleSet.combat.homeAdvantageMultiplier *
       (1 + terrain * this.ruleSet.combat.terrainDefensePerPoint) *
       (est.fortified ? this.ruleSet.combat.fortificationDefenseMultiplier : 1)
     );
