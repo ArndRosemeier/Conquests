@@ -38,7 +38,32 @@ function withDiplomacyDefaults(old: GameState): GameState {
   };
 }
 
+/** Troop unit of the classic rules; saves from before it existed are snapped to it on load. */
+const SAVE_TROOP_UNIT = 1_000;
+
+function snapTroops(n: number, keepOne: boolean): number {
+  const snapped = Math.round(n / SAVE_TROOP_UNIT) * SAVE_TROOP_UNIT;
+  return keepOne && n > 0 ? Math.max(SAVE_TROOP_UNIT, snapped) : snapped;
+}
+
+/** Older saves could hold odd troop counts (e.g. 12,345); round them to whole thousands. */
+function withWholeTroops(state: GameState): GameState {
+  const areas: Record<string, GameState["areas"][string]> = {};
+  for (const [id, a] of Object.entries(state.areas)) areas[id] = { ...a, troops: snapTroops(a.troops, true) };
+  const intel: Record<string, Record<string, GameState["intel"][string][string]>> = {};
+  for (const [p, reports] of Object.entries(state.intel ?? {})) {
+    intel[p] = {};
+    for (const [id, r] of Object.entries(reports)) intel[p][id] = { ...r, troops: snapTroops(r.troops, true) };
+  }
+  const pending = (state.pending ?? []).map((m) => ({ ...m, troops: snapTroops(m.troops, false) }));
+  return { ...state, areas, intel, pending };
+}
+
 export function deserializeGame(json: string): GameState {
+  return withWholeTroops(readSave(json));
+}
+
+function readSave(json: string): GameState {
   const parsed = JSON.parse(json) as Partial<SaveFile>;
   if (parsed.version === 4 && parsed.state !== undefined) {
     // v4 had no start year and stored "no score limit" as Infinity (JSON null).

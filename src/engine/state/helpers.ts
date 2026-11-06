@@ -102,3 +102,18 @@ export function enemiesOf(state: GameState, power: PowerId): readonly PowerId[] 
 }
 
 export const asPowerId = powerId;
+
+/** Round a troop count down to a whole number of troop units. */
+export function floorTroops(n: number, unit: number): number {
+  return Math.max(0, Math.floor(n / unit) * unit);
+}
+
+/** Round a troop count up to a whole number of troop units. */
+export function ceilTroops(n: number, unit: number): number {
+  return Math.max(0, Math.ceil(n / unit) * unit);
+}
+
+/** Round a troop count to the nearest whole number of troop units. */
+export function roundTroops(n: number, unit: number): number {
+  return Math.max(0, Math.round(n / unit) * unit);
+}

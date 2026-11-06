@@ -39,6 +39,8 @@ export interface LimitRules {
   readonly troopsPerFleet: number;
   /** Minimum garrison that must remain in a controlled area. */
   readonly minGarrison: number;
+  /** Smallest troop unit: every troop count in the game is a whole multiple of this. */
+  readonly troopUnit: number;
 }
 
 export interface CombatRules {

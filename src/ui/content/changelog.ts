@@ -17,6 +17,15 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.06",
+    date: "2026-11-06",
+    notes: [
+      "Troops now always come in whole thousands: garrisons, marches, landings, aid to minors and bribes.",
+      "Battle results are rounded to the nearest 1,000, so losses and survivors read cleanly.",
+      "Older saves are rounded to whole thousands when loaded.",
+    ],
+  },
+  {
     version: "1.05",
     date: "2026-11-06",
     notes: [

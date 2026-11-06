@@ -20,7 +20,7 @@ import {
   proposeAction,
   recordGift,
 } from "./diplomacy.ts";
-import { getAreaState, getPowerState, withArea, withPower } from "./helpers.ts";
+import { floorTroops, getAreaState, getPowerState, roundTroops, withArea, withPower } from "./helpers.ts";
 import { canBuild, canDiplomacy, canEspionage, canSubvert } from "./legalActions.ts";
 import { endTurnFor } from "./phases.ts";
 import { Rng } from "./rng.ts";
@@ -176,7 +176,7 @@ function loanMinor(
   }
   const p = spend(getPowerState(state, power), amount);
   let next = withPower(state, p);
-  const newTroops = a.troops + Math.floor(amount * ruleSet.economy.minorTroopsPerDollar);
+  const newTroops = a.troops + floorTroops(amount * ruleSet.economy.minorTroopsPerDollar, ruleSet.limits.troopUnit);
   next = withArea(next, { ...getAreaState(next, area), troops: newTroops });
   return next;
 }
@@ -252,7 +252,8 @@ function subvert(
   const rng = new Rng(next.rngState);
   const swing = 1 + (rng.next() * 2 - 1) * ruleSet.subversion.bribeVariance;
   next = { ...next, rngState: rng.snapshot() };
-  const removed = Math.max(1, Math.floor(base * swing));
+  const unit = ruleSet.limits.troopUnit;
+  const removed = Math.max(unit, roundTroops(base * swing, unit));
   const remaining = a.troops - removed;
   const events: GameEvent[] = [];
 
@@ -280,6 +281,14 @@ function requireMayAttack(state: GameState, power: PowerId, to: AreaId): void {
   }
 }
 
+/** Troops always move in whole troop units (thousands). */
+function requireWholeUnits(ruleSet: RuleSet, troops: number): void {
+  const unit = ruleSet.limits.troopUnit;
+  if (troops % unit !== 0) {
+    throw new IllegalActionError(`Troops move in steps of ${unit}, got ${troops}`);
+  }
+}
+
 function moveArmy(
   state: GameState,
   ruleSet: RuleSet,
@@ -303,6 +312,7 @@ function moveArmy(
       `Can move 1..${Math.max(0, maxMovable)} troops from ${from}, got ${troops}`,
     );
   }
+  requireWholeUnits(ruleSet, troops);
   const move: PendingMove = { power, from, to, troops, fleets: 0, bySea: false };
   const next = withArea(state, { ...src, troops: src.troops - troops });
   return {
@@ -345,6 +355,7 @@ function moveFleet(
       `Fleets can carry at most ${fleets * ruleSet.limits.troopsPerFleet} troops`,
     );
   }
+  requireWholeUnits(ruleSet, troops);
   if (troops > src.troops - ruleSet.limits.minGarrison) {
     throw new IllegalActionError(`Must leave a garrison of ${ruleSet.limits.minGarrison} in ${from}`);
   }

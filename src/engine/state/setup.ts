@@ -148,7 +148,8 @@ export function createGame(options: NewGameOptions): GameState {
           ruleSet.victory.standardAreaValueMax,
         );
     const strength = scenario.minorStrength?.[Number(area.region)] ?? 1;
-    const troops = Math.round((seedNeutralTroops(rng, area) * strength) / 100) * 100;
+    const unit = ruleSet.limits.troopUnit;
+    const troops = Math.max(unit, Math.round((seedNeutralTroops(rng, area) * strength) / unit) * unit);
     const minorDefense = MINOR_DEFENSE_FACTOR_BY_RATING[area.defense];
 
     areaStates[String(area.id)] = {
