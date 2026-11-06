@@ -23,6 +23,8 @@ import {
   riskThreshold,
 } from "./persona.ts";
 import type { DecisionContext, PlayerController } from "../types.ts";
+import { navySize, regroupFleets } from "./fleetPlanning.ts";
+import type { FleetIntel } from "./fleetPlanning.ts";
 
 /**
  * Value model. Everything the AI weighs is expressed in abstract "points" so
@@ -175,9 +177,15 @@ export class AIController implements PlayerController {
     // Reinforcement flow: march idle interior troops one hop toward the front,
     // so force concentrates at launch points over successive turns.
     const reinforce = this.reinforceActions(sim, power, knobs);
-    if (reinforce.length > 0 && this.applyAll(sim, reinforce) !== null) {
+    const afterReinforce = this.applyAll(sim, reinforce);
+    if (reinforce.length > 0 && afterReinforce !== null) {
+      sim = afterReinforce;
       out.push(...reinforce);
     }
+
+    // Bring stranded fleets home so the next invasion reuses them.
+    const regroup = this.regroup(sim, power);
+    if (regroup.length > 0 && this.applyAll(sim, regroup) !== null) out.push(...regroup);
 
     return out;
   }
@@ -737,6 +745,9 @@ export class AIController implements PlayerController {
     if (ports.length === 0) return [];
 
     const navalW = navalWeight(knobs.naval);
+    // Ships ferry an army, sail home and ferry the next: buy hulls only when
+    // the whole navy (wherever it is) is too small for this invasion.
+    const navy = navySize(state, power);
     const plans: Plan[] = [];
     for (const target of Object.values(state.areas)) {
       if (target.owner === power) continue;
@@ -750,7 +761,7 @@ export class AIController implements PlayerController {
       }
       const { troops: need, winProb } = this.assault(target, est, knobs, power);
 
-      const plan = this.bestSeaLaunch(state, power, knobs, target, need, est, ports);
+      const plan = this.bestSeaLaunch(state, power, knobs, target, need, est, ports, navy);
       if (plan === null) continue;
 
       // A cross-region amphibious loss destroys the whole landing force (the
@@ -790,6 +801,7 @@ export class AIController implements PlayerController {
     need: number,
     est: Estimate,
     ports: readonly AreaState[],
+    navy: number,
   ): { buildCost: number; crossRegion: boolean; actions: readonly Action[] } | null {
     let best: { buildCost: number; crossRegion: boolean; actions: readonly Action[] } | null = null;
     const def = getPowerDef(this.ruleSet, power);
@@ -817,6 +829,7 @@ export class AIController implements PlayerController {
       if (launch.fleets < needFleets) {
         const deficit = needFleets - launch.fleets;
         if (!(canBuild(state) && launch.supplyCenterOf === power)) continue;
+        if (navy >= needFleets) continue;
         const buildFleets = Math.ceil(deficit / finc) * finc;
         buildCost += (buildFleets / 5) * def.navyCostPer5;
         actions.push({ type: "BUILD_FLEET", area: launch.id, fleets: buildFleets });
@@ -903,57 +916,49 @@ export class AIController implements PlayerController {
     return plans;
   }
 
+  private fleetIntel(state: GameState, power: PowerId): FleetIntel {
+    const knobs = this.persona(state, power);
+    return {
+      spareTroops: (id) => this.surplus(state, power, knobs, state.areas[String(id)]!),
+      knownFleets: (id) => {
+        const est = this.estimate(state, power, id);
+        return est.known ? est.fleets : 0;
+      },
+    };
+  }
+
+  private regroup(state: GameState, power: PowerId): readonly Action[] {
+    return regroupFleets(state, power, this.ruleSet, this.world, this.fleetIntel(state, power));
+  }
+
   /**
-   * Spend every remaining dollar. A port power short on hulls buys transport so it
-   * can project force; otherwise cash is spread across the busiest frontier supply
-   * centers (not one pile), so next turn several fronts can push at once.
+   * Spend every remaining dollar on troops, spread across the busiest frontier
+   * supply centers (not one pile), so next turn several fronts can push at once.
+   * Ships are never bought here: only an invasion that needs them buys hulls.
    */
   private spendDown(state: GameState, power: PowerId): readonly Action[] {
     if (!canBuild(state)) return [];
     const owned = this.ownedIds(state, power);
     const def = getPowerDef(this.ruleSet, power);
     const treasury = getPowerState(state, power).treasury;
+    const actions: Action[] = [];
 
-    // Rank supply centers by how much frontier they touch; track a port SC too.
+    // Rank supply centers by how much frontier they touch.
     const scs: { id: AreaId; frontier: number }[] = [];
-    let portSc: AreaId | null = null;
     for (const id of owned) {
       const area = state.areas[String(id)];
       if (area === undefined || area.supplyCenterOf !== power) continue;
       const frontier = neighborsOf(this.world, id).filter((nb) => !owned.has(nb)).length;
       scs.push({ id, frontier });
-      if (portSc === null && getArea(this.world, id).isPort) portSc = id;
     }
     scs.sort((a, b) => b.frontier - a.frontier);
 
-    // A port power short on hulls buys fleets to lift its stranded troops.
-    if (portSc !== null) {
-      const min = this.ruleSet.limits.minGarrison;
-      let idleTroops = 0;
-      let capacity = 0;
-      for (const id of owned) {
-        const a = state.areas[String(id)];
-        if (a === undefined) continue;
-        idleTroops += Math.max(0, a.troops - min);
-        capacity += a.fleets * this.ruleSet.limits.troopsPerFleet;
-      }
-      if (capacity < idleTroops) {
-        const groups = Math.floor(treasury / def.navyCostPer5);
-        if (groups > 0) {
-          return [
-            { type: "BUILD_FLEET", area: portSc, fleets: groups * this.ruleSet.costs.fleetBuildIncrement },
-          ];
-        }
-      }
-    }
-
     let chunks = Math.floor(treasury / def.armyCostPer10k);
-    if (chunks <= 0 || scs.length === 0) return [];
+    if (chunks <= 0 || scs.length === 0) return actions;
 
     // Spread the troop budget across the top frontier supply centers.
     const spread = Math.min(SPENDDOWN_SPREAD, scs.length);
     const inc = this.ruleSet.costs.troopBuildIncrement;
-    const actions: Action[] = [];
     for (let i = 0; i < spread && chunks > 0; i += 1) {
       const share = i === 0 ? chunks - Math.floor(chunks / spread) * (spread - 1) : Math.floor(chunks / spread);
       if (share <= 0) continue;
