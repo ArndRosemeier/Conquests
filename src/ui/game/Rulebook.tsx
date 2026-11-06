@@ -38,6 +38,8 @@ const TERRAIN = [0, 1, 2, 3, 4] as const;
 const pct = (x: number): string => `${Math.round(x * 100)}%`;
 const num = (x: number): string => x.toLocaleString("en-US", { maximumFractionDigits: 3 });
 const n0 = (x: number): string => Math.round(x).toLocaleString("en-US");
+/** Troop counts are always shown in whole thousands. */
+const k0 = (x: number): string => n0(Math.round(x / 1000) * 1000);
 
 function Formula({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <div className="formula">{children}</div>;
@@ -127,7 +129,7 @@ function BattlesPage({ rs }: { rs: RuleSet }): React.JSX.Element {
       <Formula>luck = random between {num(BATTLE_LUCK_MIN)} and {num(luckHi)}, rolled separately for each side</Formula>
       <Formula>attacker losses = round(attackers × D ÷ (A + D) × {num(BATTLE_LOSS_RATE)})</Formula>
       <Formula>defender losses = round(defenders × A ÷ (A + D) × {num(BATTLE_LOSS_RATE)})</Formula>
-      <p>The battle stops early as soon as one side has no troops left.</p>
+      <p>The battle stops early as soon as one side has no troops left. Troops always count in whole thousands, so the survivors are rounded to the nearest 1,000 when the battle ends (the winner keeps at least 1,000).</p>
 
       <h3>3. Who wins</h3>
       <p>
@@ -186,12 +188,12 @@ function OddsCalculator({ rs }: { rs: RuleSet }): React.JSX.Element {
         rs,
         {
           attacker: attacker as PowerId,
-          attackerTroops: Math.max(0, att),
+          attackerTroops: Math.max(0, Math.round(att / 1000) * 1000),
           attackerFleets: Math.max(0, attFleets),
           bySea,
           defender: defender === "minor" ? null : (defender as PowerId),
           minorDefenseFactor: MINOR_DEFENSE_FACTOR_BY_RATING[minorRating],
-          defenderTroops: Math.max(0, def),
+          defenderTroops: Math.max(0, Math.round(def / 1000) * 1000),
           defenderFleets: Math.max(0, defFleets),
           terrain,
           fortified,
@@ -244,8 +246,8 @@ function OddsCalculator({ rs }: { rs: RuleSet }): React.JSX.Element {
         <b>{pct(odds.winProb)}</b> chance to take it
         {odds.navalWinProb !== null && <> · {pct(odds.navalWinProb)} to win at sea</>}
         <span className="muted">
-          {odds.winProb > 0 && <> · if won, about {n0(odds.avgAttackerSurvivors)} attackers left</>}
-          {odds.winProb < 1 && <> · if lost, about {n0(odds.avgDefenderSurvivors)} defenders left</>}
+          {odds.winProb > 0 && <> · if won, about {k0(odds.avgAttackerSurvivors)} attackers left</>}
+          {odds.winProb < 1 && <> · if lost, about {k0(odds.avgDefenderSurvivors)} defenders left</>}
         </span>
       </div>
     </div>

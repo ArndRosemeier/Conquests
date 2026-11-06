@@ -6,7 +6,9 @@ import type { WorldDefinition } from "../world/types.ts";
 import type { GameEvent } from "./events.ts";
 import type { AreaState, GameState, PendingMove } from "./gameState.ts";
 import {
+  floorTroops,
   getAreaState,
+  roundTroops,
   withArea,
 } from "./helpers.ts";
 import { addWarGains, canAttackOwner } from "./diplomacy.ts";
@@ -46,7 +48,12 @@ export const BATTLE_LOSS_RATE = 0.5;
 /** Naval defense factor of a neutral harbour (worst on the scale). */
 export const NEUTRAL_NAVY_FACTOR = 5;
 
-/** Attrition battle over up to N rounds; decisive by comparing effective power. */
+/**
+ * Attrition battle over up to N rounds; decisive by comparing effective power.
+ * Counts are in men (or ships). The fight itself runs on exact numbers; with a
+ * `unit` above 1 the survivors are then rounded to the nearest whole unit
+ * (troops in thousands), and the winner always keeps at least one unit.
+ */
 export function fight(
   attackers: number,
   attEff: number,
@@ -54,6 +61,7 @@ export function fight(
   defEff: number,
   rounds: number,
   rng: Rng,
+  unit = 1,
 ): BattleResult {
   let a = attackers;
   let d = defenders;
@@ -71,6 +79,12 @@ export function fight(
   if (d <= 0 && a > 0) attackerWon = true;
   else if (a <= 0 && d > 0) attackerWon = false;
   else attackerWon = a * attEff >= d * defEff;
+  if (unit > 1) {
+    a = Math.min(attackers, roundTroops(a, unit));
+    d = Math.min(defenders, roundTroops(d, unit));
+    if (attackerWon) a = Math.max(a, Math.min(unit, attackers));
+    else d = Math.max(d, Math.min(unit, defenders));
+  }
   return { attackerWon, attackerSurvivors: a, defenderSurvivors: d };
 }
 
@@ -131,13 +145,14 @@ function returnSurvivorsHome(
   power: PowerId,
   legs: readonly PendingMove[],
   survivors: number,
+  unit: number,
 ): GameState {
   const sent = legs.reduce((sum, m) => sum + m.troops, 0);
   if (sent <= 0 || survivors <= 0) return state;
   let next = state;
   let left = survivors;
   legs.forEach((leg, i) => {
-    const share = i === legs.length - 1 ? left : Math.floor((survivors * leg.troops) / sent);
+    const share = i === legs.length - 1 ? left : floorTroops((survivors * leg.troops) / sent, unit);
     left -= share;
     next = returnTroopsHome(next, power, leg.from, share);
   });
@@ -165,7 +180,7 @@ function occupy(
 ): GameState {
   let next = withArea(state, {
     ...getAreaState(state, area),
-    troops: Math.max(troops, 1),
+    troops: Math.max(troops, ctx.ruleSet.limits.troopUnit),
     fleets,
     fortified: false,
   });
@@ -211,13 +226,14 @@ function resolveLandAssault(state: GameState, legs: readonly PendingMove[], ctx:
     landDefense(ctx, target, terrain),
     ctx.ruleSet.combat.rounds,
     ctx.rng,
+    ctx.ruleSet.limits.troopUnit,
   );
   let next = state;
   if (battle.attackerWon) {
     next = occupy(next, ctx, power, to, defenderOwner, battle.attackerSurvivors, target.fleets);
   } else {
-    next = withArea(next, { ...getAreaState(next, to), troops: Math.max(battle.defenderSurvivors, 1) });
-    next = returnSurvivorsHome(next, power, legs, battle.attackerSurvivors);
+    next = withArea(next, { ...getAreaState(next, to), troops: Math.max(battle.defenderSurvivors, ctx.ruleSet.limits.troopUnit) });
+    next = returnSurvivorsHome(next, power, legs, battle.attackerSurvivors, ctx.ruleSet.limits.troopUnit);
     next = repelled(next, ctx, power, defenderOwner);
   }
   ctx.events.push({
@@ -298,11 +314,12 @@ function resolveSeaAssault(state: GameState, move: PendingMove, ctx: Ctx): GameS
     landDefense(ctx, target, toArea.terrain),
     ctx.ruleSet.combat.rounds,
     ctx.rng,
+    ctx.ruleSet.limits.troopUnit,
   );
   if (battle.attackerWon) {
     next = occupy(next, ctx, move.power, move.to, defenderOwner, battle.attackerSurvivors, survivingFleets);
   } else {
-    next = withArea(next, { ...getAreaState(next, move.to), troops: Math.max(battle.defenderSurvivors, 1) });
+    next = withArea(next, { ...getAreaState(next, move.to), troops: Math.max(battle.defenderSurvivors, ctx.ruleSet.limits.troopUnit) });
     // The fleet re-embarks the survivors and sails home.
     next = returnTroopsHome(next, move.power, move.from, battle.attackerSurvivors);
     next = returnFleetsHome(next, move.power, move.from, survivingFleets);

@@ -98,6 +98,7 @@ export const CLASSIC_RULESET: RuleSet = {
     fleetMoves: 10,
     troopsPerFleet: 1_000,
     minGarrison: 1_000,
+    troopUnit: 1_000,
   },
   combat: {
     rounds: 9,

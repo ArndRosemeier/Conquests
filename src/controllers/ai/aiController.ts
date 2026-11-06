@@ -5,7 +5,7 @@ import {
   canSubvert,
 } from "../../engine/state/legalActions.ts";
 import { reduce } from "../../engine/state/reducer.ts";
-import { getPowerState } from "../../engine/state/helpers.ts";
+import { ceilTroops, floorTroops, getPowerState } from "../../engine/state/helpers.ts";
 import { perceive } from "../../engine/state/knowledge.ts";
 import type { AreaState, GameState, PersonaKnobs } from "../../engine/state/gameState.ts";
 import type { Action } from "../../engine/state/actions.ts";
@@ -468,12 +468,12 @@ export class AIController implements PlayerController {
     const threat = this.localThreat(state, power, id);
     return Math.max(
       this.ruleSet.limits.minGarrison,
-      Math.ceil(RESERVE_SCALE * defenseSafety(knobs.reserves) * threat),
+      ceilTroops(RESERVE_SCALE * defenseSafety(knobs.reserves) * threat, this.ruleSet.limits.troopUnit),
     );
   }
 
   private surplus(state: GameState, power: PowerId, knobs: PersonaKnobs, area: AreaState): number {
-    return Math.max(0, area.troops - this.reserveNeeded(state, power, knobs, area.id));
+    return floorTroops(area.troops - this.reserveNeeded(state, power, knobs, area.id), this.ruleSet.limits.troopUnit);
   }
 
   /** Effective attack strength per attacking troop for this power. */
@@ -514,7 +514,7 @@ export class AIController implements PlayerController {
     // so the AI spreads across more cheap targets rather than over-committing.
     const neutralScale = target.owner === null ? NEUTRAL_BAR_SCALE : 1;
     const neededRatio = (0.7 + 0.9 * thr) * (1 + ASSAULT_MARGIN) * neutralScale;
-    const troops = Math.max(MIN_ASSAULT, Math.ceil((neededRatio * defPower) / attEff));
+    const troops = Math.max(MIN_ASSAULT, ceilTroops((neededRatio * defPower) / attEff, this.ruleSet.limits.troopUnit));
     const ratio = (attEff * troops) / Math.max(defPower, 1);
     const winProb = Math.max(0, Math.min(1, (ratio - 0.7) / 0.9));
     return { troops, winProb };

@@ -349,7 +349,8 @@ function MovePanel(): React.JSX.Element | null {
   const select = useGame((s) => s.select);
   const from = getAreaState(gs, move.from);
   const min = ruleSet.limits.minGarrison;
-  const maxTroops = Math.max(0, from.troops - min);
+  const unit = ruleSet.limits.troopUnit;
+  const maxTroops = Math.max(0, Math.floor((from.troops - min) / unit) * unit);
   const [men, setMen] = useState(maxTroops);
   const [ships, setShips] = useState(from.fleets);
   const fleetCap = ships * ruleSet.limits.troopsPerFleet;
@@ -396,9 +397,9 @@ function MovePanel(): React.JSX.Element | null {
             <span>Troops <b>{(move.mode === "army" ? men : seaMen).toLocaleString()}</b>{move.mode === "fleet" && <small> (room for {fleetCap.toLocaleString()})</small>}</span>
             <input
               type="range"
-              min={move.mode === "army" ? Math.min(100, maxTroops) : 0}
+              min={move.mode === "army" ? Math.min(unit, maxTroops) : 0}
               max={move.mode === "army" ? maxTroops : Math.min(maxTroops, fleetCap)}
-              step={100}
+              step={unit}
               value={move.mode === "army" ? men : seaMen}
               onChange={(e) => setMen(Number(e.target.value))}
             />

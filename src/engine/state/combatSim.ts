@@ -96,12 +96,12 @@ export function estimateBattle(
       }
     }
 
-    const battle = fight(landingTroops, attArmyEff, scenario.defenderTroops, defArmyEff, rounds, rng);
+    const battle = fight(landingTroops, attArmyEff, scenario.defenderTroops, defArmyEff, rounds, rng, ruleSet.limits.troopUnit);
     if (battle.attackerWon) {
       wins += 1;
-      attSurvSum += Math.max(battle.attackerSurvivors, 1);
+      attSurvSum += Math.max(battle.attackerSurvivors, ruleSet.limits.troopUnit);
     } else {
-      defSurvSum += Math.max(battle.defenderSurvivors, 1);
+      defSurvSum += Math.max(battle.defenderSurvivors, ruleSet.limits.troopUnit);
     }
   }
 

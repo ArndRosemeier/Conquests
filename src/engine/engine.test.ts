@@ -12,7 +12,7 @@ import { deserializeGame, serializeGame } from "./state/serialization.ts";
 import { createGame } from "./state/setup.ts";
 import type { PowerControlConfig } from "./state/setup.ts";
 import type { PowerId } from "./types.ts";
-import { CLASSIC_WORLD } from "./world/classic.ts";
+import { CLASSIC_WORLD, neighborsOf } from "./world/classic.ts";
 import { CLASSIC_HOME } from "./world/scenarios.ts";
 import { SCENARIO_STANDARD } from "./world/scenarios.ts";
 
@@ -110,5 +110,43 @@ describe("AI expansion", () => {
     const ownedBefore = Object.values(neutralsBefore).filter((a) => a.owner !== null).length;
     expect(ownedAfter).toBeGreaterThan(ownedBefore);
     expect(after.year).toBeGreaterThan(1);
+  });
+});
+
+describe("troops in whole thousands", () => {
+  it("keeps every garrison, move and battle result a multiple of 1000", async () => {
+    const unit = CLASSIC_RULESET.limits.troopUnit;
+    let state = allAiGame(11, 100000);
+    const odd: string[] = [];
+    const check = (s: GameState, when: string): void => {
+      for (const a of allAreas(s)) if (a.troops % unit !== 0) odd.push(`${when}: ${String(a.id)} ${a.troops}`);
+      for (const m of s.pending) if (m.troops % unit !== 0) odd.push(`${when}: move ${m.troops}`);
+    };
+    check(state, "setup");
+    for (let i = 0; i < 150 && state.winner === null; i += 1) {
+      if (state.stage === "COMBAT") {
+        const res = advanceAfterCombat(state, CLASSIC_RULESET, CLASSIC_WORLD);
+        for (const e of res.events) {
+          if (e.type === "BATTLE" && !e.bySea && (e.attackerLosses % unit !== 0 || e.defenderLosses % unit !== 0)) {
+            odd.push(`battle ${e.attackerLosses}/${e.defenderLosses}`);
+          }
+        }
+        state = res.state;
+      } else {
+        state = await stepTurn(state);
+      }
+      check(state, `step ${i}`);
+    }
+    expect(odd.slice(0, 5)).toEqual([]);
+  });
+
+  it("refuses moves that are not whole thousands", () => {
+    const state = allAiGame(5, 100000);
+    const power = state.activePower!;
+    const area = allAreas(state).find((a) => a.owner === power && a.troops > 5_000)!;
+    const to = neighborsOf(CLASSIC_WORLD, area.id)[0]!;
+    expect(() =>
+      reduce(state, { type: "MOVE_ARMY", from: area.id, to, troops: 1_500 }, CLASSIC_RULESET, CLASSIC_WORLD),
+    ).toThrow(/steps of 1000/);
   });
 });
