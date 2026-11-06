@@ -1,6 +1,8 @@
 import type { Action } from "../../engine/state/actions.ts";
 import {
+  callsTo,
   declareWarCost,
+  treatyBetween,
   offersTo,
   reputationOf,
   truceUntil,
@@ -8,8 +10,9 @@ import {
   warBlocker,
   warLength,
 } from "../../engine/state/diplomacy.ts";
-import type { GameState, PeaceOffer, PersonaKnobs } from "../../engine/state/gameState.ts";
-import { enemiesOf, getPowerState } from "../../engine/state/helpers.ts";
+import type { GameState, PeaceOffer, PersonaKnobs, Proposal } from "../../engine/state/gameState.ts";
+import { enemiesOf, getPowerState, isAtWar } from "../../engine/state/helpers.ts";
+import { opinionOf } from "../../engine/state/opinion.ts";
 import { reduce } from "../../engine/state/reducer.ts";
 import { Rng } from "../../engine/state/rng.ts";
 import type { RuleSet } from "../../engine/ruleset/types.ts";
@@ -53,6 +56,24 @@ export const DIPLOMAT = {
   otherWarPressure: 8,
   /** Balance at which a losing AI starts offering peace. */
   sueBelow: -15,
+  /** War chance multipliers against treaty partners (times 1 − honor). */
+  pactWarFactor: 0.3,
+  allyWarFactor: 0.03,
+  /** Join-call score needed to answer a call to arms. */
+  joinCallAt: 30,
+  /** Score needed to accept a pact; opinion needed to accept or propose an alliance. */
+  pactAt: 5,
+  allianceAt: 40,
+  /** Opinion needed before proposing a pact, and the chance per season of doing so. */
+  proposePactAt: 5,
+  pactChance: 0.06,
+  allianceChance: 0.15,
+  /** Base price, in dollars, of joining someone else's war. */
+  aidBasePrice: 3_000_000,
+  askAidBelow: -10,
+  askAidChance: 0.25,
+  offerAidFriendAt: 20,
+  offerAidChance: 0.1,
 } as const;
 
 const unit = (v: number | undefined): number => Math.max(0, Math.min(1, (v ?? NEUTRAL_KNOB) / 100));
@@ -61,6 +82,26 @@ function seedFor(state: GameState, power: PowerId): number {
   let h = state.rngState ^ Math.imul(state.tick + 1, 0x9e3779b1);
   for (const ch of String(power)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
   return h >>> 0;
+}
+
+/**
+ * What computer power `me` charges to join `victim`'s war against `enemy`:
+ * cheaper for friends and treaty partners, dearer when it likes the enemy,
+ * and an honorable power asks less.
+ */
+export function aidPriceFor(
+  state: GameState,
+  ruleSet: RuleSet,
+  world: WorldDefinition,
+  me: PowerId,
+  victim: PowerId,
+  enemy: PowerId,
+  k: PersonaKnobs,
+): number {
+  const op = (a: PowerId, b: PowerId): number => Math.max(-1, Math.min(1, opinionOf(state, ruleSet, world, a, b).value / 100));
+  const partner = treatyBetween(state, me, victim) !== undefined ? 0.5 : 1;
+  const price = DIPLOMAT.aidBasePrice * (1 - op(me, victim) * 0.6) * (1 + op(me, enemy) * 0.5) * (1 - unit(k.honor) * 0.4) * partner;
+  return Math.max(0, Math.round(price / 100_000) * 100_000);
 }
 
 export class DiplomatAI implements PlayerController {
@@ -93,9 +134,16 @@ export class DiplomatAI implements PlayerController {
       }
     };
 
+    for (const call of callsTo(sim, power)) {
+      commit({ type: "ANSWER_CALL", partner: call.partner, join: this.joinsCall(sim, power, call.partner, call.enemy, k) });
+    }
     for (const offer of offersTo(sim, power)) {
       commit({ type: "ANSWER_PEACE", from: offer.from, accept: this.acceptsPeace(sim, power, offer, k) });
     }
+    for (const p of (sim.proposals ?? []).filter((x) => x.to === power)) {
+      commit({ type: "ANSWER_PROPOSAL", from: p.from, kind: p.kind, accept: this.acceptsProposal(sim, power, p, k) });
+    }
+    for (const a of this.proposals(sim, power, k, rng)) commit(a);
     for (const enemy of enemiesOf(sim, power)) {
       const payment = this.peaceOffer(sim, power, enemy, k, rng);
       if (payment !== null) commit({ type: "OFFER_PEACE", target: enemy, payment });
@@ -129,6 +177,108 @@ export class DiplomatAI implements PlayerController {
     }
     const plan = await this.inner.requestActions({ view: { ...ctx.view, state: sim } });
     return [...pre, ...plan];
+  }
+
+  private opinion(state: GameState, of: PowerId, about: PowerId): number {
+    return opinionOf(state, this.ruleSet, this.world, of, about).value;
+  }
+
+  private areaCount(state: GameState, p: PowerId): number {
+    return Object.values(state.areas).filter((a) => a.owner === p).length;
+  }
+
+  /** Whether to answer an ally's call to arms. Honor and friendship push to join; a far stronger enemy and other wars hold back. */
+  private joinsCall(state: GameState, me: PowerId, partner: PowerId, enemy: PowerId, k: PersonaKnobs): boolean {
+    const d = DIPLOMAT;
+    const rep = reputationOf(state, this.ruleSet, me);
+    let score = unit(k.honor) * 60 + this.opinion(state, me, partner) / 2 + 10;
+    if (rep - this.ruleSet.diplomacy.refuseCallCost < 15) score += 20;
+    if (this.areaCount(state, enemy) > 1.5 * this.areaCount(state, me)) score -= 25;
+    score -= enemiesOf(state, me).length * 15;
+    return score >= d.joinCallAt;
+  }
+
+  /** Whether to accept a pact, alliance or war-aid proposal. */
+  private acceptsProposal(state: GameState, me: PowerId, p: Proposal, k: PersonaKnobs): boolean {
+    const d = DIPLOMAT;
+    const treasury = getPowerState(state, me).treasury;
+    if (p.payment < 0 && treasury < -p.payment) return false;
+    const money = p.payment / d.dollarsPerPoint;
+    const op = this.opinion(state, me, p.from);
+    const busy = enemiesOf(state, me).length > 0;
+    if (p.kind === "pact") {
+      const stronger = this.areaCount(state, p.from) > this.areaCount(state, me) ? 10 : 0;
+      const score = op + money + (busy ? 15 : 0) + stronger + (unit(k.honor) - 0.5) * 10 - (unit(k.aggression) - 0.5) * 20;
+      return score >= d.pactAt;
+    }
+    if (p.kind === "alliance") {
+      const mine = enemiesOf(state, me);
+      const common = enemiesOf(state, p.from).some((e) => mine.includes(e));
+      return op + money >= d.allianceAt && (common || op >= d.allianceAt + 25);
+    }
+    // War aid. As the helper: name a price. As the victim of a war: accept help we can afford.
+    const enemy = p.enemy!;
+    if (isAtWar(state, me, enemy)) {
+      const losing = warBalance(state, me, enemy) < 0 || this.areaCount(state, enemy) > this.areaCount(state, me);
+      return losing && -p.payment <= treasury * 0.5;
+    }
+    if (enemiesOf(state, me).length > 1) return false;
+    if (this.areaCount(state, enemy) > 1.6 * this.areaCount(state, me)) return false;
+    return p.payment >= this.aidPrice(state, me, p.from, enemy, k);
+  }
+
+  private aidPrice(state: GameState, me: PowerId, victim: PowerId, enemy: PowerId, k: PersonaKnobs): number {
+    return aidPriceFor(state, this.ruleSet, this.world, me, victim, enemy, k);
+  }
+
+  /** Treaties and war aid this power proposes this season. */
+  private proposals(state: GameState, me: PowerId, k: PersonaKnobs, rng: Rng): Action[] {
+    const d = DIPLOMAT;
+    const out: Action[] = [];
+    const pending = (to: PowerId, kind: Proposal["kind"]): boolean =>
+      (state.proposals ?? []).some((p) => p.from === me && p.to === to && p.kind === kind);
+    const others = Object.values(state.powers).filter((p) => p.id !== me && !p.eliminated && p.control !== "neutral").map((p) => p.id);
+    const myEnemies = enemiesOf(state, me);
+    const treasury = getPowerState(state, me).treasury;
+
+    for (const other of others) {
+      if (isAtWar(state, me, other)) continue;
+      const op = this.opinion(state, me, other);
+      const treaty = treatyBetween(state, me, other);
+      if (treaty === undefined && op >= d.proposePactAt && !pending(other, "pact")) {
+        if (rng.next() < d.pactChance + (myEnemies.length > 0 ? d.pactChance : 0)) {
+          const years = this.ruleSet.diplomacy.pactYears[rng.int(this.ruleSet.diplomacy.pactYears.length)]!;
+          out.push({ type: "PROPOSE", to: other, kind: "pact", payment: 0, years, enemy: null });
+        }
+      }
+      const common = enemiesOf(state, other).some((e) => myEnemies.includes(e));
+      if (treaty?.kind !== "alliance" && (common || op >= d.allianceAt + 25) && op >= d.allianceAt && !pending(other, "alliance") && rng.next() < d.allianceChance) {
+        out.push({ type: "PROPOSE", to: other, kind: "alliance", payment: 0, years: 0, enemy: null });
+      }
+    }
+
+    // Losing a war: ask a friend to join, for money.
+    for (const enemy of myEnemies) {
+      if (warBalance(state, me, enemy) >= d.askAidBelow || rng.next() > d.askAidChance) continue;
+      const helper = others
+        .filter((o) => o !== enemy && !isAtWar(state, o, enemy) && !isAtWar(state, o, me) && truceUntil(state, o, enemy) === null)
+        .sort((a, b) => this.opinion(state, me, b) - this.opinion(state, me, a))[0];
+      if (helper === undefined || pending(helper, "aid")) continue;
+      const payment = Math.round(Math.min(treasury * 0.5, d.aidBasePrice) / 100_000) * 100_000;
+      out.push({ type: "PROPOSE", to: helper, kind: "aid", payment, years: 0, enemy });
+    }
+
+    // A friend is at war with someone we dislike: offer to join, for a price.
+    for (const friend of others) {
+      if (isAtWar(state, me, friend) || this.opinion(state, me, friend) < d.offerAidFriendAt || pending(friend, "aid")) continue;
+      for (const enemy of enemiesOf(state, friend)) {
+        if (enemy === me || isAtWar(state, me, enemy) || truceUntil(state, me, enemy) !== null) continue;
+        if (this.opinion(state, me, enemy) >= 0 || myEnemies.length > 0 || rng.next() > d.offerAidChance) continue;
+        out.push({ type: "PROPOSE", to: friend, kind: "aid", payment: -this.aidPrice(state, me, friend, enemy, k), years: 0, enemy });
+        break;
+      }
+    }
+    return out;
   }
 
   /** Great powers this power borders by land, or shares a sea region's ports with. */
@@ -189,10 +339,14 @@ export class DiplomatAI implements PlayerController {
 
     const hon = unit(k.honor);
     p *= 1.3 - hon;
-    const after = reputationOf(state, rs, me) - declareWarCost(state, rs, t);
+    const after = reputationOf(state, rs, me) - declareWarCost(state, rs, me, t);
     if (after < 20) p *= 1 - hon;
 
     p *= d.perOpenWar ** enemiesOf(state, me).length;
+    p *= Math.max(0.25, Math.min(2, 1 - this.opinion(state, me, t) / 120));
+    const treaty = treatyBetween(state, me, t);
+    if (treaty?.kind === "pact") p *= d.pactWarFactor * (1 - hon);
+    if (treaty?.kind === "alliance") p *= d.allyWarFactor * (1 - hon);
     if (state.year === 1) p *= d.firstYear;
     return Math.max(0, Math.min(d.maxWarChance, p));
   }

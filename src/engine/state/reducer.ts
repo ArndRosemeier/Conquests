@@ -7,7 +7,18 @@ import type { WorldDefinition } from "../world/types.ts";
 import type { Action } from "./actions.ts";
 import type { GameEvent } from "./events.ts";
 import type { AreaState, GameState, IntelReport, PendingMove, PowerState } from "./gameState.ts";
-import { answerPeaceAction, canAttackOwner, declareWarAction, offerPeaceAction } from "./diplomacy.ts";
+import {
+  answerCallAction,
+  answerPeaceAction,
+  answerProposalAction,
+  callsTo,
+  canAttackOwner,
+  declareWarAction,
+  leaveAllianceAction,
+  offerPeaceAction,
+  proposeAction,
+  recordGift,
+} from "./diplomacy.ts";
 import { getAreaState, getPowerState, withArea, withPower } from "./helpers.ts";
 import { canBuild, canDiplomacy, canEspionage, canSubvert } from "./legalActions.ts";
 import { endTurnFor } from "./phases.ts";
@@ -145,7 +156,7 @@ function loanPower(
   const targetState = getPowerState(state, target);
   let next = withPower(state, fromState);
   next = withPower(next, { ...targetState, treasury: targetState.treasury + amount });
-
+  next = recordGift(next, from, target, amount);
   return { state: next, events: [] };
 }
 
@@ -408,7 +419,18 @@ export function reduce(
       return offerPeaceAction(state, power, action.target, action.payment);
     case "ANSWER_PEACE":
       return answerPeaceAction(state, ruleSet, power, action.from, action.accept);
+    case "PROPOSE":
+      return proposeAction(state, ruleSet, power, action);
+    case "ANSWER_PROPOSAL":
+      return answerProposalAction(state, ruleSet, power, action.from, action.kind, action.accept);
+    case "ANSWER_CALL":
+      return answerCallAction(state, ruleSet, power, action.partner, action.join);
+    case "LEAVE_ALLIANCE":
+      return leaveAllianceAction(state, ruleSet, power, action.ally);
     case "END_TURN":
+      if (callsTo(state, power).length > 0) {
+        throw new IllegalActionError("Answer your ally's call to arms before ending the turn");
+      }
       return { state: endTurnFor(state, ruleSet), events: [] };
     default: {
       const exhaustive: never = action;

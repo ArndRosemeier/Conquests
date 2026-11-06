@@ -11,7 +11,7 @@ import type { Action } from "../engine/state/actions.ts";
 import type { GameEvent } from "../engine/state/events.ts";
 import { calendarYear } from "../engine/state/gameState.ts";
 import type { GameState } from "../engine/state/gameState.ts";
-import { canAttackOwner } from "../engine/state/diplomacy.ts";
+import { callsTo, canAttackOwner } from "../engine/state/diplomacy.ts";
 import { isAtWar } from "../engine/state/helpers.ts";
 import { Rng } from "../engine/state/rng.ts";
 import { createGame } from "../engine/state/setup.ts";
@@ -67,7 +67,7 @@ export type Screen = "title" | "newgame" | "game" | "online";
 /** local: everything runs here. host: this browser runs an online game. client: someone else hosts. */
 export type Mode = "local" | "host" | "client";
 export type MoveMode = "army" | "fleet";
-export type Panel = "none" | "guide" | "settings" | "saves" | "menu" | "whatsnew";
+export type Panel = "none" | "guide" | "settings" | "saves" | "menu" | "whatsnew" | "diplomacy";
 export type AiSpeed = "relaxed" | "normal" | "fast";
 /** How the world is shown in a game: the flat map or the turning globe. */
 export type MapView = "flat" | "globe";
@@ -294,7 +294,7 @@ export const useGame = create<StoreState>((set, get) => {
         case "WAR_DECLARED":
           if (e.by === me || e.against === me) {
             const other = e.by === me ? e.against : e.by;
-            toast({ title: `War with ${pn(other)}!`, body: e.by === me ? `You declared war. Reputation −${e.reputationLoss}.` : `${pn(e.by)} declared war on you.`, tone: "war" });
+            toast({ title: `War with ${pn(other)}!`, body: e.by === me ? (e.reputationLoss > 0 ? `You declared war. Reputation −${e.reputationLoss}.` : "You entered the war.") : e.reason === "ally" ? `${pn(e.by)} joins the war at its ally's side.` : `${pn(e.by)} declared war on you.`, tone: "war" });
             sound.play("drums", 0.8);
           } else {
             // Wars between other nations change the map too: tell the player.
@@ -320,6 +320,58 @@ export const useGame = create<StoreState>((set, get) => {
           break;
         case "PEACE_DECLINED":
           if (e.offerer === me) toast({ title: `${pn(e.by)} refused your peace offer`, body: "The war goes on.", tone: "bad" });
+          break;
+        case "TREATY_SIGNED": {
+          const what = e.kind === "pact" ? `${e.years}-year non-aggression pact` : "alliance";
+          logLine(gs, `${pn(e.a)} and ${pn(e.b)} signed a ${what}`, "info");
+          if (e.a === me || e.b === me) {
+            const other = e.a === me ? e.b : e.a;
+            toast({ title: e.kind === "pact" ? `Pact with ${pn(other)}` : `Alliance with ${pn(other)}!`, body: e.kind === "pact" ? `Neither side may attack the other for ${e.years} years.` : "If either of you is attacked, the other is called to arms.", tone: "good" });
+            sound.play("stamp", 0.7);
+          } else if (e.kind === "alliance") {
+            toast({ title: `${pn(e.a)} and ${pn(e.b)} form an alliance`, tone: "info" });
+          }
+          break;
+        }
+        case "TREATY_ENDED": {
+          const what = e.kind === "pact" ? "pact" : "alliance";
+          const text =
+            e.reason === "expired" ? `The ${what} between ${pn(e.a)} and ${pn(e.b)} ran its course`
+            : e.reason === "broken" ? `${pn(e.a)} broke its ${what} with ${pn(e.b)}`
+            : e.reason === "left" ? `${pn(e.a)} left its alliance with ${pn(e.b)}`
+            : `${pn(e.a)} abandoned its ally ${pn(e.b)}`;
+          logLine(gs, text, e.reason === "expired" ? "info" : "war");
+          if (e.a === me || e.b === me || e.reason === "broken" || e.reason === "refused") {
+            toast({ title: text, tone: e.reason === "expired" ? "info" : e.b === me ? "bad" : "war" });
+          }
+          break;
+        }
+        case "PROPOSAL_MADE":
+          if (e.to === me) {
+            const what = e.kind === "pact" ? "a non-aggression pact" : e.kind === "alliance" ? "an alliance" : `war aid against ${pn(e.enemy)}`;
+            toast({ title: `${pn(e.from)} proposes ${what}`, body: "Answer on your turn.", tone: "info" });
+            sound.play("telegraph");
+          }
+          break;
+        case "PROPOSAL_DECLINED":
+          if (e.from === me) toast({ title: `${pn(e.by)} refused your proposal`, tone: "bad" });
+          break;
+        case "AID_AGREED":
+          logLine(gs, `${pn(e.helper)} joins ${pn(e.victim)}'s war against ${pn(e.enemy)}`, "war");
+          if (e.victim === me) toast({ title: `${pn(e.helper)} joins your war against ${pn(e.enemy)}`, tone: "good" });
+          break;
+        case "CALL_TO_ARMS":
+          if (e.ally === me) {
+            toast({ title: `Your ally ${pn(e.partner)} was attacked by ${pn(e.enemy)}`, body: "Answer the call to arms on your turn.", tone: "war" });
+            sound.play("horn", 0.7);
+          } else if (e.partner === me) {
+            toast({ title: `${pn(e.ally)} is called to your side`, body: "Your ally decides on its turn.", tone: "info" });
+          }
+          break;
+        case "CALL_ANSWERED":
+          logLine(gs, e.joined ? `${pn(e.ally)} honoured its alliance with ${pn(e.partner)}` : `${pn(e.ally)} refused to help its ally ${pn(e.partner)}`, e.joined ? "info" : "war");
+          if (e.partner === me) toast({ title: e.joined ? `${pn(e.ally)} joins you against ${pn(e.enemy)}!` : `${pn(e.ally)} left you to fight alone`, tone: e.joined ? "good" : "bad" });
+          else if (e.enemy === me && e.joined) toast({ title: `${pn(e.ally)} joins the war against you`, tone: "war" });
           break;
         case "ATTACK_CALLED_OFF":
           if (e.power === me) {
@@ -680,7 +732,7 @@ export const useGame = create<StoreState>((set, get) => {
         }
         set({ canUndo: undoStack.length > 0 });
       }
-      const area = "area" in action ? action.area : "to" in action ? action.to : null;
+      const area = "area" in action ? action.area : action.type === "MOVE_ARMY" || action.type === "MOVE_FLEET" ? action.to : null;
       switch (action.type) {
         case "BUILD_ARMY":
           sound.play("drums", 0.6);
@@ -724,6 +776,11 @@ export const useGame = create<StoreState>((set, get) => {
     },
 
     endTurn: () => {
+      const { gameState: gsNow, humanPower: meNow } = get();
+      if (gsNow !== null && meNow !== null && callsTo(gsNow, meNow).length > 0) {
+        toast({ title: "Your ally needs an answer", body: "Join the war or refuse before ending your turn.", tone: "war" });
+        return;
+      }
       if (get().mode === "client") {
         net?.endTurn();
         sound.play("stamp", 0.7);

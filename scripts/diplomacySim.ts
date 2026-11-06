@@ -29,7 +29,7 @@ const maxYears = get("--years", 60);
 const ai = createAI("v2", R, W);
 const buckets = [2, 5, 10, 20, 999];
 const decl = new Array(buckets.length).fill(0);
-const totals = { decl: 0, peace: 0, offers: 0, declined: 0, calledOff: 0, years: 0, won: 0 };
+const totals = { decl: 0, peace: 0, offers: 0, declined: 0, calledOff: 0, years: 0, won: 0, pacts: 0, alliances: 0, aid: 0, joined: 0, refused: 0, pactsBroken: 0, pactsExpired: 0, alliancesEnded: 0, proposals: 0 };
 const firstWar: number[] = [];
 const byPersona = new Map<string, number>();
 
@@ -46,7 +46,9 @@ for (let g = 0; g < games; g += 1) {
   let first: number | null = null;
   const seen = (events: readonly GameEvent[], year: number): void => {
     for (const e of events) {
-      if (e.type === "WAR_DECLARED") {
+      if (e.type === "WAR_DECLARED" && e.reason !== "declared") {
+        totals.decl += 0;
+      } else if (e.type === "WAR_DECLARED") {
         totals.decl += 1;
         decl[buckets.findIndex((b) => year <= b)] += 1;
         first ??= year;
@@ -55,6 +57,15 @@ for (let g = 0; g < games; g += 1) {
       else if (e.type === "PEACE_OFFERED") totals.offers += 1;
       else if (e.type === "PEACE_DECLINED") totals.declined += 1;
       else if (e.type === "ATTACK_CALLED_OFF") totals.calledOff += 1;
+      else if (e.type === "TREATY_SIGNED") e.kind === "pact" ? (totals.pacts += 1) : (totals.alliances += 1);
+      else if (e.type === "AID_AGREED") totals.aid += 1;
+      else if (e.type === "PROPOSAL_MADE") totals.proposals += 1;
+      else if (e.type === "CALL_ANSWERED") e.joined ? (totals.joined += 1) : (totals.refused += 1);
+      else if (e.type === "TREATY_ENDED") {
+        if (e.kind === "alliance") totals.alliancesEnded += 1;
+        else if (e.reason === "broken") totals.pactsBroken += 1;
+        else if (e.reason === "expired") totals.pactsExpired += 1;
+      }
     }
   };
   while (s.winner === null && s.year <= maxYears) {

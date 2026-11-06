@@ -83,6 +83,19 @@ export function storyFor(
       return { kind: "war", headline: headline("war", { attacker: pn(e.by), defender: pn(e.against) }, seed), art: ART.war, weight: 60 + mine(e.by, e.against) };
     case "WAR_ENDED":
       return { kind: "peace", headline: headline("peace", { attacker: pn(e.by), defender: pn(e.against) }, seed), art: ART.peace, weight: 55 + mine(e.by, e.against) };
+    case "TREATY_SIGNED":
+      return {
+        kind: e.kind === "alliance" ? "alliance" : "pact",
+        headline: headline(e.kind === "alliance" ? "alliance" : "pact", { attacker: pn(e.a), defender: pn(e.b) }, seed),
+        art: ART.peace,
+        weight: (e.kind === "alliance" ? 50 : 25) + mine(e.a, e.b),
+      };
+    case "TREATY_ENDED":
+      if (e.reason !== "broken" && e.reason !== "refused") return null;
+      return { kind: "betrayal", headline: headline("betrayal", { attacker: pn(e.a), defender: pn(e.b) }, seed), art: ART.war, weight: 65 + mine(e.a, e.b) };
+    case "CALL_ANSWERED":
+      if (!e.joined) return null;
+      return { kind: "call_honored", headline: headline("call_honored", { attacker: pn(e.ally), defender: pn(e.partner) }, seed), art: ART.war, weight: 55 + mine(e.ally, e.partner) };
     case "PEACE_DECLINED":
       return { kind: "peace_failed", headline: headline("peace_failed", { attacker: pn(e.offerer), defender: pn(e.by) }, seed), art: ART.war, weight: 30 + mine(e.by, e.offerer) };
     case "SUBVERSION":

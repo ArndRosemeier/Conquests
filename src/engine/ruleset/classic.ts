@@ -134,6 +134,14 @@ export const CLASSIC_RULESET: RuleSet = {
     pariahBelow: 25,
     recoveryPerYear: 4,
     warPointsPerBattle: 5,
+    pactYears: [3, 5],
+    pactBreakCost: 25,
+    allyBetrayalCost: 40,
+    leaveAllianceCost: 10,
+    refuseCallCost: 35,
+    answerCallGain: 15,
+    pactKeptGain: 3,
+    offerSeasons: 4,
   },
 };
 

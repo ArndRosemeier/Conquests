@@ -46,7 +46,38 @@ export type GameEvent =
       readonly by: PowerId;
       readonly against: PowerId;
       readonly reputationLoss: number;
+      /** How the war began: a plain declaration, an ally answering a call, or paid war aid. */
+      readonly reason?: "declared" | "ally" | "aid";
     }
+  | {
+      readonly type: "TREATY_SIGNED";
+      readonly kind: "pact" | "alliance";
+      readonly a: PowerId;
+      readonly b: PowerId;
+      /** Paid by `a` (the proposer) to `b`; negative = the other way. */
+      readonly payment: number;
+      readonly years: number;
+    }
+  | {
+      readonly type: "TREATY_ENDED";
+      readonly kind: "pact" | "alliance";
+      readonly a: PowerId;
+      readonly b: PowerId;
+      /** expired: ran its term · broken: a declaration of war · left: `a` left · refused: `a` refused a call to arms. */
+      readonly reason: "expired" | "broken" | "left" | "refused";
+    }
+  | {
+      readonly type: "PROPOSAL_MADE";
+      readonly from: PowerId;
+      readonly to: PowerId;
+      readonly kind: "pact" | "alliance" | "aid";
+      readonly payment: number;
+      readonly enemy: PowerId | null;
+    }
+  | { readonly type: "PROPOSAL_DECLINED"; readonly by: PowerId; readonly from: PowerId; readonly kind: "pact" | "alliance" | "aid" }
+  | { readonly type: "AID_AGREED"; readonly helper: PowerId; readonly victim: PowerId; readonly enemy: PowerId; readonly payment: number }
+  | { readonly type: "CALL_TO_ARMS"; readonly ally: PowerId; readonly partner: PowerId; readonly enemy: PowerId }
+  | { readonly type: "CALL_ANSWERED"; readonly ally: PowerId; readonly partner: PowerId; readonly enemy: PowerId; readonly joined: boolean }
   /** `against` accepted the peace `by` offered; `payment` went from `by` to `against` (negative: the other way). */
   | {
       readonly type: "WAR_ENDED";

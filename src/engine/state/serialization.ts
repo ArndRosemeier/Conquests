@@ -6,7 +6,7 @@ import type { GameState } from "./gameState.ts";
  * class instances, no functions, RNG stored as a single number), so persistence
  * and future networking are a straight JSON round-trip.
  */
-export const SAVE_VERSION = 6 as const;
+export const SAVE_VERSION = 7 as const;
 
 /** Calendar start years of the scenarios that existed before saves stored one. */
 const LEGACY_START_YEAR: Readonly<Record<string, number>> = { standard: 1880, "1880": 1880, "1914": 1914 };
@@ -31,6 +31,10 @@ function withDiplomacyDefaults(old: GameState): GameState {
     warGains: o.warGains ?? {},
     reputation: o.reputation ?? {},
     peaceOffers: o.peaceOffers ?? [],
+    treaties: o.treaties ?? [],
+    proposals: o.proposals ?? [],
+    callsToArms: o.callsToArms ?? [],
+    goodwill: o.goodwill ?? {},
   };
 }
 
@@ -45,7 +49,7 @@ export function deserializeGame(json: string): GameState {
       winningScore: typeof old.winningScore === "number" ? old.winningScore : 0,
     });
   }
-  if (parsed.version === 5 && parsed.state !== undefined) return withDiplomacyDefaults(parsed.state);
+  if ((parsed.version === 5 || parsed.version === 6) && parsed.state !== undefined) return withDiplomacyDefaults(parsed.state);
   if (parsed.version !== SAVE_VERSION) {
     throw new EngineError(
       `Unsupported save version ${String(parsed.version)} (expected ${SAVE_VERSION})`,

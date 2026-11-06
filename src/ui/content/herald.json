@@ -189,5 +189,33 @@
   "{defender} Eliminated; Former Colonies Send Mixed Reviews",
   "End Of {defender}! Historians Rush To Publish Before Facts Settle",
   "Farewell, {defender}! The Great Powers Promise To Speak Only Kindly, Occasionally"
+ ],
+ "pact": [
+  "{attacker} And {defender} Sign Non-Aggression Pact; Border Guards Allowed To Sit Down",
+  "Pact Of Peace: {attacker} And {defender} Promise Not To Shoot, For Now",
+  "{attacker} And {defender} Shake Hands; Diplomats Count Fingers Afterwards",
+  "{attacker}-{defender} Pact Signed; Cartographers Relieved",
+  "Truce Becomes Treaty: {attacker} And {defender} Agree To Disagree Peacefully"
+ ],
+ "alliance": [
+  "Grand Alliance! {attacker} And {defender} Swear To Stand Together",
+  "{attacker} And {defender} Allied; Rivals Reach For Their Atlases",
+  "Blood Brothers: {attacker} Pledges Its Sword To {defender}",
+  "{attacker} And {defender} Form Alliance; Toasts Raised In Two Languages",
+  "New Alliance Shakes The Chancelleries: {attacker} Joins Hands With {defender}"
+ ],
+ "betrayal": [
+  "Treachery! {attacker} Tears Up Its Treaty With {defender}",
+  "{attacker} Betrays {defender}; The World Takes Note, And Notes",
+  "Ink Barely Dry: {attacker} Abandons {defender}",
+  "Perfidy Most Foul: {attacker} Turns Its Back On {defender}",
+  "{defender} Learns The Value Of {attacker}'s Word: None"
+ ],
+ "call_honored": [
+  "{attacker} Answers {defender}'s Call To Arms; Bugles Sound Across The Border",
+  "True To Its Word: {attacker} Marches Beside {defender}",
+  "{attacker} Honours Alliance, Declares For {defender}; Enemies Recalculate",
+  "Shoulder To Shoulder: {attacker} Joins {defender}'s War",
+  "{attacker} Keeps Faith With {defender}; Reputation Soars"
  ]
 }

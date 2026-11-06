@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import type React from "react";
 import { MapCanvas } from "../map/MapCanvas.tsx";
 import { useGame } from "../store.ts";
-import { AreaPanel, PeaceOffers } from "./AreaPanel.tsx";
+import { AreaPanel } from "./AreaPanel.tsx";
+import { DiplomacyPanel, Inbox } from "./Diplomacy.tsx";
 import { Chronicle, SeasonBanner, Standings, Toasts, TopBar, TurnDock } from "./Hud.tsx";
 import { EndScreen, GameMenu, Guide, Herald, Settings, WhatsNew } from "./Overlays.tsx";
 import { SaveLoad } from "./SaveLoad.tsx";
@@ -28,6 +29,8 @@ export function GameScreen(): React.JSX.Element {
         endTurn();
       } else if (e.key.toLowerCase() === "z" && (e.ctrlKey || e.metaKey)) {
         undo();
+      } else if (e.key.toLowerCase() === "d" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setPanel("diplomacy");
       } else if (e.key.toLowerCase() === "g" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         st.setMapView(st.mapView === "globe" ? "flat" : "globe");
       }
@@ -42,7 +45,8 @@ export function GameScreen(): React.JSX.Element {
       <TopBar />
       <Standings />
       <AreaPanel />
-      <PeaceOffers />
+      <Inbox />
+      <DiplomacyPanel />
       <TurnDock />
       <Chronicle />
       <Toasts />

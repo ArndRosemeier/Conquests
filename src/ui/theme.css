@@ -581,3 +581,26 @@ select { cursor: pointer; }
 .whatsnew-modal ul { padding-left: 18px; display: grid; gap: 6px; line-height: 1.45; }
 .menu-version { margin: 4px 0 0; font-size: 12px; color: var(--text-dim); letter-spacing: .06em; }
 @media (max-width: 720px) { .whatsnew-btn span { display: none; } }
+
+/* Diplomacy panel */
+.diplomacy-modal { width: min(760px, 100%); }
+.dip-list { display: grid; gap: 10px; margin-top: 10px; }
+.dip-row { padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.035); }
+.dip-row.tone-war { border-color: rgba(207,70,50,.45); }
+.dip-row.tone-ally { border-color: rgba(214,178,107,.55); }
+.dip-row header { display: flex; align-items: center; gap: 10px; }
+.dip-row header img { width: 34px; height: 34px; object-fit: contain; }
+.dip-row header div { display: flex; flex-direction: column; flex: 1; }
+.dip-row header small { color: var(--text-dim); font-size: 12px; }
+.dip-status { font-size: 12px; padding: 3px 10px; border-radius: 99px; background: rgba(255,255,255,.07); white-space: nowrap; }
+.dip-status.war { background: rgba(207,70,50,.25); color: #ffb3a6; }
+.dip-status.ally { background: rgba(214,178,107,.25); color: var(--brass-2); }
+.dip-status.pact { background: rgba(79,158,230,.18); color: #b9dbff; }
+.dip-opinion { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+.dip-opinion small { color: var(--text-dim); font-size: 12px; }
+.dip-opinion .good { color: #8fdc9a; }
+.dip-opinion .bad { color: #ff9a8a; }
+.dip-aid { margin-top: 8px; }
+.chip.danger { border-color: rgba(207,70,50,.55); color: #ffb3a6; }
+.peace-answer.call { border-color: rgba(207,70,50,.5); }
+.peace-offers { max-height: 60vh; overflow-y: auto; }
