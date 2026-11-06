@@ -5,6 +5,7 @@ import { worldGeometry } from "./geometry.ts";
 import type { AreaGeometry } from "./geometry.ts";
 import { ArcLayer, atmosphere, nearestAngle, stars, toVec, yawFacing } from "./globeKit.ts";
 import { MapRenderer } from "./renderer.ts";
+import { easeInOut, wrapPoint } from "./wrap.ts";
 import type { EffectInput, MapModel } from "./renderer.ts";
 
 /** Flat texture size in CSS px: 360 degrees across, 180 down. */
@@ -15,6 +16,10 @@ const MAX_DIST = 6;
 const MAX_TILT = 1.25;
 /** Seconds without input before the globe starts turning by itself. */
 const IDLE = 10;
+/** Seconds for the map to wrap onto the globe, or to unwrap. */
+const WRAP_TIME = 1.0;
+/** Camera distance of the plain globe view. */
+const HOME_DIST = 4.2;
 
 /**
  * The game world on a turning globe. The flat map renderer draws the whole
@@ -57,8 +62,17 @@ export class GlobeView {
   private target: { yaw: number; tilt: number; dist: number; speed: number } | null = null;
   private velocity = { yaw: 0, tilt: 0 };
   private model: MapModel | null = null;
+  private readonly atmo: THREE.Mesh;
+  private readonly bounds: WorldDefinition["bounds"];
+  /** 0 = the flat sheet, 1 = the globe. */
+  private wrapP = 1;
+  private wrapGoal = 1;
+  /** Unwrapping waits until the globe has turned to face the map's centre. */
+  private aligning = false;
+  private onFlat: ((done: boolean) => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement, world: WorldDefinition) {
+  /** `wrapIn`: start as the flat map and wrap it onto the globe. */
+  constructor(canvas: HTMLCanvasElement, world: WorldDefinition, wrapIn = false) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.geo = worldGeometry(world);
@@ -94,7 +108,15 @@ export class GlobeView {
     this.earth.add(this.overlay);
     this.pivot.add(this.earth);
     this.arcs = new ArcLayer(this.earth);
-    this.scene.add(atmosphere(), stars());
+    this.atmo = atmosphere();
+    this.scene.add(this.atmo, stars());
+    this.bounds = world.bounds;
+    if (wrapIn) {
+      this.wrapP = 0;
+      this.yaw = yawFacing(0);
+      this.tilt = 0;
+      this.applyWrap();
+    }
 
     // Even light so the empires' colours read true; a soft sun gives the sphere its shape.
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
@@ -104,6 +126,38 @@ export class GlobeView {
 
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
+  }
+
+  // ---- wrapping -------------------------------------------------------------
+
+  /** True while the map is wrapping or unwrapping. */
+  get wrapping(): boolean {
+    return this.wrapP !== this.wrapGoal || this.aligning;
+  }
+
+  /**
+   * Turn to face the map's centre and unwrap the globe into the flat map.
+   * Resolves true once flat, false if `wrap` was called first.
+   */
+  unwrap(): Promise<boolean> {
+    this.onFlat?.(false);
+    this.velocity = { yaw: 0, tilt: 0 };
+    this.wrapGoal = 0;
+    if (this.wrapP === 1) {
+      this.aligning = true;
+      this.target = { yaw: nearestAngle(this.yaw, yawFacing(0)), tilt: 0, dist: HOME_DIST, speed: 0.2 };
+    }
+    return new Promise((done) => {
+      this.onFlat = done;
+    });
+  }
+
+  /** Wrap back onto the globe (after an unwrap was started). */
+  wrap(): void {
+    this.onFlat?.(false);
+    this.onFlat = null;
+    this.aligning = false;
+    this.wrapGoal = 1;
   }
 
   // ---- the MapRenderer surface ---------------------------------------------
@@ -128,6 +182,7 @@ export class GlobeView {
 
   /** Drag: turn the globe under the pointer. */
   panBy(dx: number, dy: number): void {
+    if (this.wrapping) return;
     this.touch();
     const k = this.dragScale();
     this.yaw += dx * k;
@@ -135,16 +190,19 @@ export class GlobeView {
   }
 
   fling(vx: number, vy: number): void {
+    if (this.wrapping) return;
     const k = this.dragScale();
     this.velocity = { yaw: vx * k, tilt: vy * k };
   }
 
   stopFling(): void {
     this.velocity = { yaw: 0, tilt: 0 };
+    if (this.wrapping) return;
     this.touch();
   }
 
   zoomAt(_sx: number, _sy: number, factor: number): void {
+    if (this.wrapping) return;
     this.touch();
     const dist = clampDist(this.dist / factor);
     if (this.target) this.target.dist = dist;
@@ -153,14 +211,15 @@ export class GlobeView {
 
   /** Back out to see a whole hemisphere. */
   fitWorld(): void {
+    if (this.wrapping) return;
     this.touch();
-    this.target = { yaw: this.yaw, tilt: 0.45, dist: 4.2, speed: 0.08 };
+    this.target = { yaw: this.yaw, tilt: 0.45, dist: HOME_DIST, speed: 0.08 };
   }
 
   /** Turn an area to face the viewer. */
   flyTo(id: AreaId, closer = 3.4, speed = 0.07): void {
     const g = this.geo.get(id);
-    if (!g) return;
+    if (!g || this.wrapGoal === 0) return;
     this.target = {
       yaw: nearestAngle(this.yaw, yawFacing(g.center.x)),
       tilt: clampTilt((-g.center.y * Math.PI) / 180),
@@ -202,6 +261,8 @@ export class GlobeView {
 
   destroy(): void {
     cancelAnimationFrame(this.raf);
+    this.onFlat?.(false);
+    this.onFlat = null;
     for (const t of this.timers) window.clearTimeout(t);
     this.flat.destroy();
     this.arcs.dispose();
@@ -215,6 +276,68 @@ export class GlobeView {
   }
 
   // ---- internals ------------------------------------------------------------
+
+  /** Advance the wrap. Returns true while it is running. */
+  private stepWrap(dt: number): boolean {
+    if (this.aligning) return true;
+    if (this.wrapP === this.wrapGoal) return false;
+    const step = dt / WRAP_TIME;
+    this.wrapP = this.wrapGoal > this.wrapP ? Math.min(this.wrapGoal, this.wrapP + step) : Math.max(this.wrapGoal, this.wrapP - step);
+    if (this.wrapGoal === 0) {
+      // Keep facing the map's centre while unwrapping.
+      this.yaw = nearestAngle(this.yaw, yawFacing(0));
+      this.tilt = 0;
+    }
+    this.applyWrap();
+    if (this.wrapP === 0 && this.wrapGoal === 0) {
+      const done = this.onFlat;
+      this.onFlat = null;
+      done?.(true);
+    }
+    return true;
+  }
+
+  /** Bend both sphere meshes to the current wrap. */
+  private applyWrap(): void {
+    const s = easeInOut(this.wrapP);
+    for (const [mesh, radius] of [[this.earth, 1], [this.overlay, 1.002]] as const) {
+      const g = mesh.geometry;
+      const pos = g.attributes.position as THREE.BufferAttribute;
+      const nor = g.attributes.normal as THREE.BufferAttribute;
+      const uv = g.attributes.uv as THREE.BufferAttribute;
+      const p = pos.array as Float32Array;
+      const n = nor.array as Float32Array;
+      for (let i = 0; i < uv.count; i += 1) wrapPoint(uv.getX(i), uv.getY(i), s, radius, p, i * 3, n);
+      pos.needsUpdate = true;
+      nor.needsUpdate = true;
+      g.computeBoundingSphere();
+    }
+    // The halo only belongs to a round world.
+    const glow = Math.max(0, (s - 0.7) / 0.3);
+    this.atmo.visible = glow > 0;
+    this.atmo.scale.setScalar(0.85 + 0.15 * glow);
+  }
+
+  /**
+   * The camera for the current wrap: at 0 it frames the flat sheet the way the
+   * flat map frames the world, at 1 it is the usual globe camera.
+   */
+  private placeCamera(): void {
+    const s = easeInOut(this.wrapP);
+    if (s >= 1) {
+      this.camera.position.set(0, 0, this.dist);
+      return;
+    }
+    const half = Math.tan((this.camera.fov * Math.PI) / 360);
+    const h = this.bounds.maxY - this.bounds.minY;
+    // Same framing as the flat map's whole-world view: 300 degrees across or the whole height.
+    const byWidth = ((Math.PI * 2 * 300) / 360) / (2 * half * this.camera.aspect);
+    const byHeight = ((Math.PI * (h + 6)) / 180) / (2 * half);
+    const flatDist = 1 + Math.min(byWidth, byHeight);
+    // The flat map sits a little south of the equator (map y grows southward).
+    const flatY = (-((this.bounds.minY + this.bounds.maxY) / 2 + 4) * Math.PI) / 180;
+    this.camera.position.set(0, flatY * (1 - s), flatDist + (this.dist - flatDist) * s);
+  }
 
   private unit(id: AreaId): THREE.Vector3 | null {
     const g = this.geo.get(id);
@@ -241,13 +364,23 @@ export class GlobeView {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
 
-    if (this.target) {
+    const wrapStep = this.stepWrap(dt);
+
+    if (this.target && (!wrapStep || this.aligning)) {
       const t = this.target;
       const k = 1 - Math.pow(1 - t.speed, dt * 60);
       this.yaw += (t.yaw - this.yaw) * k;
       this.tilt += (t.tilt - this.tilt) * k;
       this.dist += (t.dist - this.dist) * k;
-      if (Math.abs(t.yaw - this.yaw) + Math.abs(t.tilt - this.tilt) + Math.abs(t.dist - this.dist) < 0.002) this.target = null;
+      const left = Math.abs(t.yaw - this.yaw) + Math.abs(t.tilt - this.tilt) + Math.abs(t.dist - this.dist);
+      // Unwrapping only needs to be close: the sheet snaps the last bit straight.
+      if (left < (this.aligning ? 0.03 : 0.002)) {
+        if (this.aligning) this.dist = t.dist;
+        this.target = null;
+        this.aligning = false;
+      }
+    } else if (wrapStep) {
+      // Hold still while the sheet curls; a flyTo asked for meanwhile waits.
     } else if (Math.abs(this.velocity.yaw) + Math.abs(this.velocity.tilt) > 1e-4) {
       this.yaw += this.velocity.yaw;
       this.tilt = clampTilt(this.tilt + this.velocity.tilt);
@@ -259,7 +392,7 @@ export class GlobeView {
     }
     this.earth.rotation.y = this.yaw;
     this.pivot.rotation.x = this.tilt;
-    this.camera.position.z = this.dist;
+    this.placeCamera();
 
     if (this.flat.renderFrame()) {
       this.landCtx.drawImage(this.sea, 0, 0);

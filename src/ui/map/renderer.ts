@@ -192,6 +192,13 @@ export class MapRenderer {
   }
 
   private pendingFly: { id: AreaId; scale: number } | null = null;
+  /** Longitude the whole-world view centres on. */
+  private fitX = 15;
+
+  /** Centre the whole-world view on this longitude (call before the first resize to open there). */
+  centreWorldOn(x: number): void {
+    this.fitX = x;
+  }
 
   fitWorld(): void {
     if (this.texture) {
@@ -201,7 +208,7 @@ export class MapRenderer {
     }
     const h = this.bounds.maxY - this.bounds.minY;
     this.target = null;
-    this.cam = { x: 15, y: (this.bounds.minY + this.bounds.maxY) / 2 + 4, scale: Math.max(this.width / 300, this.height / (h + 6)) };
+    this.cam = { x: this.fitX, y: (this.bounds.minY + this.bounds.maxY) / 2 + 4, scale: Math.max(this.width / 300, this.height / (h + 6)) };
     this.clampCamera(this.cam);
     this.dirty = true;
   }

@@ -17,6 +17,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.02",
+    date: "2026-11-06",
+    notes: [
+      "Map or globe in one click: a new switch in the top bar, or press G.",
+      "The flat map now wraps itself around the globe when you switch, and unrolls back into a map when you leave it.",
+    ],
+  },
+  {
     version: "1.01",
     date: "2026-11-06",
     notes: [

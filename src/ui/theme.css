@@ -392,6 +392,12 @@ select { cursor: pointer; }
 .stat b { font-size: 17px; font-variant-numeric: tabular-nums; }
 .stat small { color: var(--text-dim); font-weight: 400; font-size: 12px; }
 .topbar-right { margin-left: auto; display: flex; gap: 8px; }
+.view-toggle { display: inline-flex; align-items: center; gap: 2px; height: 40px; padding: 3px; border-radius: 12px; border: 1px solid var(--glass-line); background: var(--glass); backdrop-filter: blur(10px); cursor: pointer; color: var(--text-dim); font: inherit; }
+.view-toggle:hover { border-color: var(--brass); }
+.view-toggle span { display: inline-flex; align-items: center; gap: 6px; height: 100%; padding: 0 10px; border-radius: 9px; font-size: 16px; transition: background .25s, color .25s; }
+.view-toggle span i { font-style: normal; font-size: 13px; }
+.view-toggle span.on { background: var(--brass); color: #23170a; font-weight: 600; }
+@media (max-width: 720px) { .view-toggle span i { display: none; } .view-toggle span { padding: 0 8px; } }
 
 .standings { position: absolute; top: 84px; right: 12px; width: 250px; z-index: 9; padding: 6px; }
 .standings-head { width: 100%; display: flex; align-items: baseline; gap: 8px; background: none; border: 0; padding: 6px 8px; cursor: pointer; text-align: left; }
