@@ -49,7 +49,7 @@ export function scenarioArmyEff(
       : effectiveness(ruleSet, getPowerDef(ruleSet, scenario.defender).armyDefense);
   const terrainMult = 1 + scenario.terrain * ruleSet.combat.terrainDefensePerPoint;
   const fortMult = scenario.fortified ? ruleSet.combat.fortificationDefenseMultiplier : 1;
-  return { attack, defense: baseDef * terrainMult * fortMult };
+  return { attack, defense: baseDef * ruleSet.combat.homeAdvantageMultiplier * terrainMult * fortMult };
 }
 
 /** Monte-Carlo estimate of a battle's outcome using the real combat resolver. */
@@ -61,9 +61,10 @@ export function estimateBattle(
   const { attack: attArmyEff, defense: defArmyEff } = scenarioArmyEff(ruleSet, scenario);
   const attNavyEff = effectiveness(ruleSet, getPowerDef(ruleSet, scenario.attacker).navyOffense);
   const navalDefEff =
-    scenario.defender === null
+    (scenario.defender === null
       ? effectiveness(ruleSet, NEUTRAL_NAVY_FACTOR)
-      : effectiveness(ruleSet, getPowerDef(ruleSet, scenario.defender).navyDefense);
+      : effectiveness(ruleSet, getPowerDef(ruleSet, scenario.defender).navyDefense)) *
+    ruleSet.combat.homeAdvantageMultiplier;
   const rounds = ruleSet.combat.rounds;
   const navalContested =
     scenario.bySea && (scenario.attackerFleets > 0 || scenario.defenderFleets > 0);

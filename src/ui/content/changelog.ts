@@ -17,6 +17,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.01",
+    date: "2026-11-06",
+    notes: [
+      "Home advantage: defenders now fight at double strength, on land and at sea. Attacks need about twice the troops they used to.",
+      "The rules reference, the odds calculator and the computer rivals all account for the home advantage.",
+    ],
+  },
+  {
     version: "1.00",
     date: "2026-11-06",
     notes: [

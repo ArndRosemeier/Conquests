@@ -106,6 +106,7 @@ export const CLASSIC_RULESET: RuleSet = {
     factorPerPoint: 0.5,
     fortificationDefenseMultiplier: 2,
     terrainDefensePerPoint: 0.25,
+    homeAdvantageMultiplier: 2,
   },
   economy: {
     minorTroopsPerDollar: 1 / 30,

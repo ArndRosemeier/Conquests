@@ -106,9 +106,10 @@ function BattlesPage({ rs }: { rs: RuleSet }): React.JSX.Element {
       <h3>1. Strength of each side</h3>
       <Formula>attack per troop = strength(attacker's army attack factor)</Formula>
       <Formula>
-        defense per troop = strength(defense factor) × (1 + terrain × {num(c.terrainDefensePerPoint)}) × ({num(c.fortificationDefenseMultiplier)} if fortified, else 1)
+        defense per troop = strength(defense factor) × {num(c.homeAdvantageMultiplier)} home advantage × (1 + terrain × {num(c.terrainDefensePerPoint)}) × ({num(c.fortificationDefenseMultiplier)} if fortified, else 1)
       </Formula>
       <p>
+        Home advantage: the defender always fights at {num(c.homeAdvantageMultiplier)}× strength, on land and at sea.
         A power defends with its army defense factor. An independent country uses the factor of its
         defensive rating (see Territories). Terrain runs from 0 to 4:
       </p>
@@ -136,7 +137,7 @@ function BattlesPage({ rs }: { rs: RuleSet }): React.JSX.Element {
       <h3>4. Landings by sea</h3>
       <p>
         A landing first fights a naval battle, fleets against the fleets in the harbour, with the same formula
-        using navy factors. An independent harbour defends with factor {NEUTRAL_NAVY_FACTOR}. Each fleet carries
+        using navy factors (the harbour's fleets get the same {num(c.homeAdvantageMultiplier)}× home advantage). An independent harbour defends with factor {NEUTRAL_NAVY_FACTOR}. Each fleet carries
         {" "}{rs.limits.troopsPerFleet.toLocaleString("en-US")} troops.
       </p>
       <ul>

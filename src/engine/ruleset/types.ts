@@ -54,6 +54,8 @@ export interface CombatRules {
   readonly fortificationDefenseMultiplier: number;
   /** Extra defense multiplier per point of terrain value. */
   readonly terrainDefensePerPoint: number;
+  /** Home advantage: the defender's battle strength (land and sea) is multiplied by this. */
+  readonly homeAdvantageMultiplier: number;
 }
 
 export interface EconomyRules {

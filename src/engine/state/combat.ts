@@ -147,6 +147,7 @@ function returnSurvivorsHome(
 function landDefense(ctx: Ctx, target: AreaState, terrain: number): number {
   return (
     defenderArmyEff(ctx, target) *
+    ctx.ruleSet.combat.homeAdvantageMultiplier *
     terrainMultiplier(ctx.ruleSet, terrain) *
     (target.fortified ? ctx.ruleSet.combat.fortificationDefenseMultiplier : 1)
   );
@@ -247,7 +248,8 @@ function resolveSeaAssault(state: GameState, move: PendingMove, ctx: Ctx): GameS
   let survivingFleets = move.fleets;
   if (move.fleets > 0 || dest.fleets > 0) {
     const navalDefEff =
-      defenderOwner === null ? effectiveness(ctx.ruleSet, NEUTRAL_NAVY_FACTOR) : navyEff(ctx, defenderOwner, false);
+      (defenderOwner === null ? effectiveness(ctx.ruleSet, NEUTRAL_NAVY_FACTOR) : navyEff(ctx, defenderOwner, false)) *
+      ctx.ruleSet.combat.homeAdvantageMultiplier;
     const naval = fight(
       move.fleets,
       navyEff(ctx, move.power, true),
