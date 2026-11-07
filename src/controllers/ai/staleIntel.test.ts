@@ -59,16 +59,13 @@ function setup(intelAgeSeasons: number): { state: GameState; me: PowerId; target
 }
 
 describe("AI and stale intel", () => {
-  it("a repulsed attacker learns the garrison it fought", () => {
-    const { state, me, target, from } = setup(4);
+  it("a repulsed attacker throws away its old report", () => {
+    const { state, me, target, from } = setup(1);
     let s = reduce(state, { type: "MOVE_ARMY", from, to: target, troops: 20_000 }, R, W).state;
     s = { ...s, stage: "COMBAT", activePower: null };
     const after = resolveCombat(s, R, W).state;
     expect(getAreaState(after, target).owner).not.toBe(me);
-    const report = getIntel(after, me, target);
-    expect(report).not.toBeNull();
-    expect(report!.troops).toBe(getAreaState(after, target).troops);
-    expect(report!.troops).toBeGreaterThan(100_000);
+    expect(getIntel(after, me, target)).toBeNull();
   });
 
   it("does not attack again after being thrown back (no spying outside spring)", async () => {

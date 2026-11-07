@@ -17,6 +17,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.11",
+    date: "2026-11-07",
+    notes: [
+      "A thrown-back attack no longer reveals the defenders. Instead the attacker's old spy report is thrown away, so you (and computer rivals) must spy again to learn the real garrison.",
+      "Computer rivals won't attack a power's country without a spy report, so after a failed attack they wait for fresh intel instead of attacking blindly.",
+    ],
+  },
+  {
     version: "1.10",
     date: "2026-11-07",
     notes: [
