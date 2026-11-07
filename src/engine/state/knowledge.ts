@@ -76,9 +76,8 @@ export function perceive(state: GameState, power: PowerId, area: AreaId): Percep
 }
 
 /**
- * Stores a fresh snapshot of an area for a power, overwriting any earlier (now
- * stale) report. Spying creates one; so does fighting a battle there and being
- * thrown back, because the attacker saw how many defenders were left.
+ * Stores a fresh espionage snapshot of an area for a power, overwriting any
+ * earlier (now stale) report. Spying is the only way to learn a foreign garrison.
  */
 export function recordIntel(state: GameState, power: PowerId, area: AreaId): GameState {
   const key = String(power);
@@ -96,4 +95,17 @@ export function recordIntel(state: GameState, power: PowerId, area: AreaId): Gam
     ...state,
     intel: { ...state.intel, [key]: { ...prev, [String(area)]: report } },
   };
+}
+
+/**
+ * Drops a power's report on an area. Used when an attack there is thrown back:
+ * the old count was clearly wrong, but the attacker learns nothing new and must
+ * spy again to find out the real garrison.
+ */
+export function forgetIntel(state: GameState, power: PowerId, area: AreaId): GameState {
+  const key = String(power);
+  const prev = state.intel[key];
+  if (prev === undefined || prev[String(area)] === undefined) return state;
+  const { [String(area)]: _dropped, ...rest } = prev;
+  return { ...state, intel: { ...state.intel, [key]: rest } };
 }
