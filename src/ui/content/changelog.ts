@@ -17,6 +17,13 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.09",
+    date: "2026-11-07",
+    notes: [
+      "Quick step buttons (−50, −10, −1, +1, +10, +50) above the troop and fleet sliders when marching, sailing or buying. Troop steps count in thousands.",
+    ],
+  },
+  {
     version: "1.08",
     date: "2026-11-06",
     notes: [

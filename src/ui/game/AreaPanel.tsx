@@ -264,6 +264,26 @@ function ActionButton({ icon, title, sub, disabled, onClick }: { icon: string; t
   );
 }
 
+const STEPS = [-50, -10, -1, 1, 10, 50] as const;
+
+/** -50 … +50 buttons above a slider. `unit` is the size of one step (1,000 for troops); results stay inside min..max. */
+function StepButtons({ value, min, max, unit = 1, suffix = "", onChange }: {
+  value: number; min: number; max: number; unit?: number; suffix?: string; onChange: (v: number) => void;
+}): React.JSX.Element {
+  return (
+    <div className="step-buttons">
+      {STEPS.map((d) => {
+        const next = Math.max(min, Math.min(max, value + d * unit));
+        return (
+          <button key={d} type="button" className="chip step" disabled={next === value} onClick={() => onChange(next)}>
+            {d > 0 ? "+" : "−"}{Math.abs(d)}{suffix}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function BuyRow({ icon, title, unit, unitLabel, cost, treasury, disabled, onBuy }: {
   icon: string; title: string; unit: number; unitLabel: (n: number) => string; cost: number; treasury: number; disabled: string | null; onBuy: (n: number) => void;
 }): React.JSX.Element {
@@ -281,12 +301,15 @@ function BuyRow({ icon, title, unit, unitLabel, cost, treasury, disabled, onBuy 
         </span>
       </div>
       {!off && (
+        <>
+        <StepButtons value={n} min={1} max={Math.max(1, max)} onChange={setN} />
         <div className="buy-controls">
           <input type="range" min={1} max={Math.max(1, max)} value={n} onChange={(e) => setN(Number(e.target.value))} />
           <button className="btn small primary" onClick={() => onBuy(n * unit)}>
             {unitLabel(n * unit)} · {money(n * cost)}
           </button>
         </div>
+        </>
       )}
     </div>
   );
@@ -355,6 +378,9 @@ function MovePanel(): React.JSX.Element | null {
   const [ships, setShips] = useState(from.fleets);
   const fleetCap = ships * ruleSet.limits.troopsPerFleet;
   const seaMen = Math.min(men, fleetCap, maxTroops);
+  const troopMin = move.mode === "army" ? Math.min(unit, maxTroops) : 0;
+  const troopMax = move.mode === "army" ? maxTroops : Math.min(maxTroops, fleetCap);
+  const troopValue = move.mode === "army" ? men : seaMen;
 
   useEffect(() => {
     setMen(maxTroops);
@@ -388,22 +414,25 @@ function MovePanel(): React.JSX.Element | null {
             {hostile && toSt && <small>{toSt.owner === null ? "Independent" : powerName(ruleSet.powers, toSt.owner)}</small>}
           </div>
           {move.mode === "fleet" && (
-            <label className="slider">
+            <div className="slider">
               <span>Fleets <b>{ships}</b></span>
-              <input type="range" min={1} max={from.fleets} value={ships} onChange={(e) => setShips(Number(e.target.value))} />
-            </label>
+              <StepButtons value={ships} min={1} max={from.fleets} onChange={setShips} />
+              <input type="range" aria-label="Fleets" min={1} max={from.fleets} value={ships} onChange={(e) => setShips(Number(e.target.value))} />
+            </div>
           )}
-          <label className="slider">
-            <span>Troops <b>{(move.mode === "army" ? men : seaMen).toLocaleString()}</b>{move.mode === "fleet" && <small> (room for {fleetCap.toLocaleString()})</small>}</span>
+          <div className="slider">
+            <span>Troops <b>{troopValue.toLocaleString()}</b>{move.mode === "fleet" && <small> (room for {fleetCap.toLocaleString()})</small>}</span>
+            <StepButtons value={troopValue} min={troopMin} max={troopMax} unit={unit} suffix="k" onChange={setMen} />
             <input
               type="range"
-              min={move.mode === "army" ? Math.min(unit, maxTroops) : 0}
-              max={move.mode === "army" ? maxTroops : Math.min(maxTroops, fleetCap)}
+              aria-label="Troops"
+              min={troopMin}
+              max={troopMax}
               step={unit}
-              value={move.mode === "army" ? men : seaMen}
+              value={troopValue}
               onChange={(e) => setMen(Number(e.target.value))}
             />
-          </label>
+          </div>
           <p className="hint">{troops(min)} must stay behind. Moves resolve together at the end of the season.</p>
           <div className="move-buttons">
             <button className="btn ghost" onClick={cancelMove}>Back</button>
