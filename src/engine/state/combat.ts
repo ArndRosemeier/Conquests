@@ -12,6 +12,7 @@ import {
   withArea,
 } from "./helpers.ts";
 import { addWarGains, canAttackOwner } from "./diplomacy.ts";
+import { recordIntel } from "./knowledge.ts";
 import { Rng } from "./rng.ts";
 import { addBattlePoints, changeControl } from "./scoring.ts";
 
@@ -233,6 +234,8 @@ function resolveLandAssault(state: GameState, legs: readonly PendingMove[], ctx:
     next = occupy(next, ctx, power, to, defenderOwner, battle.attackerSurvivors, target.fleets);
   } else {
     next = withArea(next, { ...getAreaState(next, to), troops: Math.max(battle.defenderSurvivors, ctx.ruleSet.limits.troopUnit) });
+    // The attacker saw the defenders it failed to break: it now knows the garrison.
+    next = recordIntel(next, power, to);
     next = returnSurvivorsHome(next, power, legs, battle.attackerSurvivors, ctx.ruleSet.limits.troopUnit);
     next = repelled(next, ctx, power, defenderOwner);
   }
@@ -320,6 +323,7 @@ function resolveSeaAssault(state: GameState, move: PendingMove, ctx: Ctx): GameS
     next = occupy(next, ctx, move.power, move.to, defenderOwner, battle.attackerSurvivors, survivingFleets);
   } else {
     next = withArea(next, { ...getAreaState(next, move.to), troops: Math.max(battle.defenderSurvivors, ctx.ruleSet.limits.troopUnit) });
+    next = recordIntel(next, move.power, move.to);
     // The fleet re-embarks the survivors and sails home.
     next = returnTroopsHome(next, move.power, move.from, battle.attackerSurvivors);
     next = returnFleetsHome(next, move.power, move.from, survivingFleets);

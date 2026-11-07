@@ -17,6 +17,14 @@ export interface Release {
 
 export const CHANGELOG: readonly Release[] = [
   {
+    version: "1.10",
+    date: "2026-11-07",
+    notes: [
+      "An attack that is thrown back now reveals how many defenders are left, for you and for computer rivals.",
+      "Computer rivals no longer keep hammering a country you reinforced: they learn from the failed attack, and in spring they spy again on old reports before attacking.",
+    ],
+  },
+  {
     version: "1.09",
     date: "2026-11-07",
     notes: [

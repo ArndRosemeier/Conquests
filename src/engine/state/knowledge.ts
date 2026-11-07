@@ -74,3 +74,26 @@ export function perceive(state: GameState, power: PowerId, area: AreaId): Percep
     observedSeason: report.observedSeason,
   };
 }
+
+/**
+ * Stores a fresh snapshot of an area for a power, overwriting any earlier (now
+ * stale) report. Spying creates one; so does fighting a battle there and being
+ * thrown back, because the attacker saw how many defenders were left.
+ */
+export function recordIntel(state: GameState, power: PowerId, area: AreaId): GameState {
+  const key = String(power);
+  const a = getAreaState(state, area);
+  const report: IntelReport = {
+    troops: a.troops,
+    fleets: a.fleets,
+    owner: a.owner,
+    fortified: a.fortified,
+    observedYear: state.year,
+    observedSeason: state.season,
+  };
+  const prev = state.intel[key] ?? {};
+  return {
+    ...state,
+    intel: { ...state.intel, [key]: { ...prev, [String(area)]: report } },
+  };
+}

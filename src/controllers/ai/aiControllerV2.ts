@@ -332,6 +332,19 @@ export class AIControllerV2 implements PlayerController {
     );
   }
 
+  /**
+   * True when an enemy power's area should be re-scouted before it is attacked:
+   * the report is old, it is spring (spying is allowed) and a spy is affordable.
+   * Without this the AI kept hitting a target on a stale, too-low garrison count
+   * long after the owner had reinforced it.
+   */
+  private shouldScoutFirst(state: GameState, power: PowerId, target: AreaState): boolean {
+    if (target.owner === null || !canEspionage(state)) return false;
+    const view = perceive(state, power, target.id);
+    if (view.kind !== "report" || view.ageSeasons < RESPY_AGE_SEASONS) return false;
+    return this.spyCost(target) <= getPowerState(state, power).treasury;
+  }
+
   private spyCost(area: AreaState): number {
     return area.fortified || area.supplyCenterOf !== null
       ? this.ruleSet.costs.spyFortified
@@ -433,6 +446,7 @@ export class AIControllerV2 implements PlayerController {
         if (target.owner !== null) continue;
         est = this.priorEstimate(state, power, target);
       }
+      if (this.shouldScoutFirst(state, power, target)) continue;
       const { troops: need, winProb } = this.assault(target, est, knobs, power);
 
       const plan = this.bestLandLaunch(state, power, knobs, target, need, owned);
@@ -506,6 +520,7 @@ export class AIControllerV2 implements PlayerController {
         if (target.owner !== null) continue;
         est = this.priorEstimate(state, power, target);
       }
+      if (this.shouldScoutFirst(state, power, target)) continue;
       const { troops: need, winProb } = this.assault(target, est, knobs, power);
 
       const plan = this.bestSeaLaunch(state, power, knobs, target, need, est, ports, navy);

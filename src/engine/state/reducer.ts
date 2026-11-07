@@ -6,7 +6,7 @@ import { getArea, neighborsOf } from "../world/classic.ts";
 import type { WorldDefinition } from "../world/types.ts";
 import type { Action } from "./actions.ts";
 import type { GameEvent } from "./events.ts";
-import type { AreaState, GameState, IntelReport, PendingMove, PowerState } from "./gameState.ts";
+import type { AreaState, GameState, PendingMove, PowerState } from "./gameState.ts";
 import {
   answerCallAction,
   answerPeaceAction,
@@ -22,6 +22,7 @@ import {
 } from "./diplomacy.ts";
 import { floorTroops, getAreaState, getPowerState, roundTroops, withArea, withPower } from "./helpers.ts";
 import { canBuild, canDiplomacy, canEspionage, canSubvert } from "./legalActions.ts";
+import { recordIntel } from "./knowledge.ts";
 import { endTurnFor } from "./phases.ts";
 import { Rng } from "./rng.ts";
 import { changeControl } from "./scoring.ts";
@@ -203,29 +204,6 @@ function spy(
     events: [
       { type: "SPY_RESULT", by: power, area, troops: a.troops, income: a.income },
     ],
-  };
-}
-
-/**
- * Stores a fresh espionage snapshot of an area for a power, overwriting any
- * earlier (now stale) report. This is the only way foreign garrison knowledge is
- * created; it is never implicitly refreshed by other actions.
- */
-function recordIntel(state: GameState, power: PowerId, area: AreaId): GameState {
-  const key = String(power);
-  const a = getAreaState(state, area);
-  const report: IntelReport = {
-    troops: a.troops,
-    fleets: a.fleets,
-    owner: a.owner,
-    fortified: a.fortified,
-    observedYear: state.year,
-    observedSeason: state.season,
-  };
-  const prev = state.intel[key] ?? {};
-  return {
-    ...state,
-    intel: { ...state.intel, [key]: { ...prev, [String(area)]: report } },
   };
 }
 
